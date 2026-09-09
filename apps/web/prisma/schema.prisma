@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum PerfilUsuario {
+  ADMIN
+  OPERADOR
+}
+
+enum StatusMonte {
+  EM_ESTOQUE
+  RESERVADO
+  NO_SETOR
+  PARCIAL
+  VENDIDO
+  AJUSTADO
+}
+
+enum TipoMovimentacao {
+  ENTRADA
+  RESERVA
+  CANCELAMENTO_RESERVA
+  MOVIMENTO_SETOR
+  BAIXA_VENDA
+  EDICAO
+  RECONCILIACAO
+  AJUSTE
+}
+
+enum AcaoAuditoria {
+  CRIACAO
+  ATUALIZACAO
+  EXCLUSAO
+}
+
+enum CorLiga {
+  AZUL
+  VERMELHO
+  VERDE
+  AMARELO
+  CINZA
+  PRETO
+}
+
+enum Polaridade {
+  POSITIVO
+  NEGATIVO
+}
+
+enum TipoFornecedor {
+  INTERNO
+  EXTERNO
+  OUTRO
+}
+
+model usuario {
+  id             Int             @id @default(autoincrement())
+  email          String          @unique
+  senha_hash     String
+  nome_completo  String
+  perfil         PerfilUsuario   @default(ADMIN)
+  ativo          Boolean         @default(true)
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  movimentacoes  movimentacao_chumbo[]
+  contagens      contagem_chumbo[]
+  logs_auditoria log_auditoria[]
+  notificacoes   notificacao[]
+}
+
+model liga_chumbo {
+  id         Int             @id @default(autoincrement())
+  nome       String          @unique
+  cor        CorLiga
+  ativo      Boolean         @default(true)
+  created_at DateTime        @default(now())
+  updated_at DateTime        @updatedAt
+  lotes      lote_chumbo[]
+  contagens  contagem_chumbo[]
+}
+
+model setor {
+  id          Int               @id @default(autoincrement())
+  nome        String            @unique
+  descricao   String?
+  ativo       Boolean           @default(true)
+  created_at  DateTime          @default(now())
+  updated_at  DateTime          @updatedAt
+  colaboradores colaborador[]
+  reservas    monte_chumbo[]
+  movimentacoes movimentacao_chumbo[]
+}
+
+model colaborador {
+  id         Int      @id @default(autoincrement())
+  nome       String
+  setor_id   Int
+  setor      setor    @relation(fields: [setor_id], references: [id])
+  ativo      Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([setor_id])
+}
+
+model modelo_grade {
+  id         Int      @id @default(autoincrement())
+  nome       String   @unique
+  ativo      Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model polaridade {
+  id         Int        @id @default(autoincrement())
+  nome       Polaridade @unique
+  ativo      Boolean    @default(true)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+}
+
+model lote_chumbo {
+  id                   Int                @id @default(autoincrement())
+  codigo               String             @unique
+  data_chegada         DateTime           @db.Date
+  liga_id              Int
+  liga                 liga_chumbo        @relation(fields: [liga_id], references: [id])
+  fornecedor           TipoFornecedor     @default(OUTRO)
+  peso_total_informado Decimal?           @db.Decimal(10, 2)
+  total_barras         Int                @default(0)
+  total_montes         Int                @default(0)
+  linhas               Int                @default(2)
+  colunas              Int                @default(5)
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  montes               monte_chumbo[]
+  movimentacoes        movimentacao_chumbo[]
+  contagens            contagem_chumbo[]
+
+  @@index([liga_id])
+  @@index([data_chegada])
+}
+
+model monte_chumbo {
+  id               Int             @id @default(autoincrement())
+  lote_id          Int
+  lote             lote_chumbo     @relation(fields: [lote_id], references: [id])
+  linha            Int
+  coluna           Int
+  ordem_liberacao  Int
+  qtd_barras       Int
+  peso_real        Decimal?        @db.Decimal(10, 2)
+  peso_estimado    Decimal?        @db.Decimal(10, 2)
+  status           StatusMonte     @default(EM_ESTOQUE)
+  setor_reserva_id Int?
+  setor_reserva    setor?          @relation(fields: [setor_reserva_id], references: [id])
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  movimentacoes    movimentacao_chumbo[]
+
+  @@unique([lote_id, linha, coluna])
+  @@index([lote_id])
+  @@index([status])
+}
+
+model movimentacao_chumbo {
+  id              Int               @id @default(autoincrement())
+  monte_id        Int?
+  monte           monte_chumbo?     @relation(fields: [monte_id], references: [id])
+  lote_id         Int
+  lote            lote_chumbo       @relation(fields: [lote_id], references: [id])
+  tipo            TipoMovimentacao
+  status_anterior StatusMonte?
+  status_novo     StatusMonte?
+  qtd_barras      Int?
+  peso            Decimal?          @db.Decimal(10, 2)
+  setor_id        Int?
+  setor           setor?            @relation(fields: [setor_id], references: [id])
+  destino         String?
+  para_quem       String?
+  observacao      String?
+  data            DateTime          @db.Date
+  usuario_id      Int?
+  usuario         usuario?          @relation(fields: [usuario_id], references: [id])
+  idempotency_key String?           @unique
+  created_at      DateTime          @default(now())
+
+  @@index([monte_id])
+  @@index([lote_id])
+  @@index([tipo])
+  @@index([data])
+}
+
+model contagem_chumbo {
+  id                   Int          @id @default(autoincrement())
+  data                 DateTime     @db.Date
+  liga_id              Int
+  liga                 liga_chumbo  @relation(fields: [liga_id], references: [id])
+  qtd_barras           Int
+  lote_id              Int?
+  lote                 lote_chumbo? @relation(fields: [lote_id], references: [id])
+  observacao           String?
+  divergencia_sistema  Int?
+  revisada_em          DateTime?
+  usuario_id           Int
+  usuario              usuario      @relation(fields: [usuario_id], references: [id])
+  created_at           DateTime     @default(now())
+
+  @@index([data, liga_id])
+  @@index([usuario_id])
+}
+
+model log_auditoria {
+  id               Int           @id @default(autoincrement())
+  entidade         String
+  entidade_id      Int
+  acao             AcaoAuditoria
+  dados_anteriores Json?
+  dados_novos      Json?
+  usuario_id       Int?
+  usuario          usuario?      @relation(fields: [usuario_id], references: [id])
+  created_at       DateTime      @default(now())
+
+  @@index([entidade, entidade_id])
+  @@index([usuario_id])
+  @@index([created_at])
+}
+
+model notificacao {
+  id         Int      @id @default(autoincrement())
+  titulo     String
+  mensagem   String
+  url        String?
+  lida       Boolean  @default(false)
+  usuario_id Int
+  usuario    usuario  @relation(fields: [usuario_id], references: [id])
+  created_at DateTime @default(now())
+
+  @@index([usuario_id, lida])
+}
