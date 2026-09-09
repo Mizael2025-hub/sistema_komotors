@@ -72,6 +72,7 @@ model usuario {
   contagens      contagem_chumbo[]
   logs_auditoria log_auditoria[]
   notificacoes   notificacao[]
+  tokens_refresh token_refresh[]
 }
 
 model liga_chumbo {
@@ -213,6 +214,18 @@ model contagem_chumbo {
   created_at           DateTime     @default(now())
 
   @@index([data, liga_id])
+  @@index([usuario_id])
+}
+
+model token_refresh {
+  id          Int      @id @default(autoincrement())
+  usuario_id  Int
+  usuario     usuario  @relation(fields: [usuario_id], references: [id])
+  token_hash  String   @unique
+  expira_em   DateTime
+  revogado_em DateTime?
+  created_at  DateTime @default(now())
+
   @@index([usuario_id])
 }
 
