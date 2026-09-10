@@ -11,10 +11,10 @@ type ItemMenu = {
 };
 
 const ITENS: ItemMenu[] = [
-  { href: '/configuracoes', titulo: 'Configurações', descricao: 'Ligas, setores, colaboradores, modelos de grade e polaridades', pronto: true },
-  { href: '/chumbo/entrada', titulo: 'Chumbo — Entrada', descricao: 'Apontamento de remessa com grade 2D', pronto: false },
-  { href: '/chumbo/estoque', titulo: 'Chumbo — Estoque', descricao: 'Grade 2D viva por lote, reservas e movimentações', pronto: false },
+  { href: '/chumbo/entrada', titulo: 'Chumbo — Entrada', descricao: 'Apontamento de remessa com grade 2D', pronto: true },
+  { href: '/chumbo/estoque', titulo: 'Chumbo — Estoque', descricao: 'Grade 2D viva por lote, reservas e movimentações', pronto: true },
   { href: '/chumbo/contagem', titulo: 'Chumbo — Contagem', descricao: 'Contagem diária e revisão contra o sistema', pronto: false },
+  { href: '/configuracoes', titulo: 'Configurações', descricao: 'Ligas, setores, colaboradores, modelos de grade e polaridades', pronto: true },
   { href: '/dashboard', titulo: 'Dashboard', descricao: 'Métricas, gráficos e indicadores do chumbo', pronto: false },
   { href: '/relatorios', titulo: 'Relatórios', descricao: 'Movimentações, saldos e divergências (XLSX/PDF)', pronto: false },
 ];
