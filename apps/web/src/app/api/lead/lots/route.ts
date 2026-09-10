@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const parsed = entradaLoteSchema.safeParse(corpo);
   if (!parsed.success) {
-    return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+    return ERROS.erroValidacao(parsed.error.issues);
   }
 
   try {
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     });
     return Response.json({ lote: { id: lote.id, codigo: lote.codigo } }, { status: 201 });
   } catch (ex) {
-    if (ex instanceof RegraError) return erro(ex.status, ex.message);
-    return ERROS.erroInterno();
+    if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
+    return ERROS.erroInterno(ex);
   }
 }

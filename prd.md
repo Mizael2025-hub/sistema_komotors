@@ -150,7 +150,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 
 - **RF-C01** Cadastro de **ligas de chumbo** com: nome (único, obrigatório) e **cor** (obrigatória; paleta padrão: azul, vermelho, verde, amarelo, cinza, preto). A cor identifica visualmente a liga em todo o sistema (grade, cards, relatórios).
 - **RF-C02** Cadastro de **modelos de grade** (nome único, obrigatório).
-- **RF-C03** Cadastro de **polaridades** (padrão: positivo e negativo).
+- **RF-C03** ~~Cadastro de polaridades~~ — **removido em 2026-09-10** (decisão do cliente): polaridade é fixa (POSITIVO|NEGATIVO, enum no código/banco), sem necessidade de CRUD.
 - **RF-C04** Cadastro de **setores** (nome único, obrigatório; ex.: teleiras, boleira, moinho, masseira, empastadeira, montagem, formação).
 - **RF-C05** Cadastro de **colaboradores**: nome (obrigatório) e setor (obrigatório). Colaborador **não é usuário do sistema** — serve apenas para informar o operador da máquina nos apontamentos futuros.
 - **RF-C06** Todas as telas de cadastro com validação de duplicidade, feedback de erro em português brasileiro e confirmação para ações destrutivas.

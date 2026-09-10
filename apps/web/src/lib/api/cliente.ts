@@ -12,13 +12,17 @@ async function resposta(request: Promise<Response>) {
   } catch {
     corpo = { erro: 'Erro inesperado. Tente novamente.' };
   }
+  const codigo = (corpo as { codigo?: string } | null)?.codigo;
+  const geral = (corpo?.detalhes?.geral ?? []).join(' ');
+  const mensagem = [corpo?.erro ?? 'Erro na operacao.', geral].filter(Boolean).join(' ');
   if (r.status === 401) {
     if (typeof window !== 'undefined') window.location.assign('/login');
-    throw new Error(corpo.erro);
+    throw new Error(`${mensagem} [${codigo ?? 'E_HTTP401'}]`);
   }
-  const e = new Error(corpo?.erro ?? 'Erro na operacao.') as Error & { detalhes?: Record<string, string[]>; status: number };
+  const e = new Error(codigo ? `${mensagem} [${codigo}]` : mensagem) as Error & { detalhes?: Record<string, string[]>; status: number; codigo: string };
   e.detalhes = corpo?.detalhes;
   e.status = r.status;
+  e.codigo = codigo ?? 'desconhecido';
   throw e;
 }
 

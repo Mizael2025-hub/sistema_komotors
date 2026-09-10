@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { loginSchema } from '@komotors/shared';
 import { conferirSenha } from '@/lib/auth/senha';
 import { definirCookiesSessao } from '@/lib/auth/sessao';
-import { erro } from '@/lib/api/erros';
+import { ERROS, erro } from '@/lib/api/erros';
 import { registrarAuditoria } from '@/lib/auditoria';
 
 const tentativas = new Map<string, { n: number; janela: number }>();
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const parsed = loginSchema.safeParse(corpo);
   if (!parsed.success) {
-    return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+    return ERROS.erroValidacao(parsed.error.issues);
   }
 
   const { email, senha } = parsed.data;

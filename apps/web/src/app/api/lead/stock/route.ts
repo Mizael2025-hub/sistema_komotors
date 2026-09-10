@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   try {
     return Response.json(await estoqueLiga(ligaId));
   } catch (ex) {
-    if (ex instanceof RegraError) return erro(ex.status, ex.message);
-    return ERROS.erroInterno();
+    if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
+    return ERROS.erroInterno(ex);;
   }
 }

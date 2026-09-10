@@ -332,6 +332,9 @@ export default function PaginaEstoqueChumbo() {
         {ligasItens != null && ligaId == null && ligasItens.length > 0 && (
           <p className="text-sm text-muted-foreground">Escolha uma liga para consultar o estoque.</p>
         )}
+        {ligasItens != null && ligaId != null && estoque === null && !erro && (
+          <p className="animate-pulse text-sm text-muted-foreground">Carregando estoque da liga selecionada…</p>
+        )}
 
         {erro && modal !== 'acoes' && <p role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>}
         {aviso && <p className="mb-3 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">{aviso}</p>}
@@ -450,7 +453,12 @@ export default function PaginaEstoqueChumbo() {
 
       {modal === 'acoes' && acaoAtiva && estoque && (
         <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" onClick={() => setModal(null)}>
-          <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-card p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            {enviando && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                <p className="rounded-full bg-foreground px-4 py-2 text-xs text-background">Aplicando operação…</p>
+              </div>
+            )}
             <div className="mb-3 flex items-center justify-between">
               <p className="font-medium">Ações — {selecionados.size} monte(s)</p>
               <button onClick={() => setModal(null)} className="text-sm text-muted-foreground">✕</button>
@@ -585,7 +593,7 @@ export default function PaginaEstoqueChumbo() {
 
       {modal === 'historico' && hist && (
         <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" onClick={() => setModal(null)}>
-          <div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-card p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
               <p className="font-medium">Histórico do monte</p>
               <button onClick={() => setModal(null)} className="text-sm text-muted-foreground">✕</button>

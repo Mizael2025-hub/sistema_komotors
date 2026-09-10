@@ -24,7 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ cr
 
   const parsed = SCHEMAS[crud as CrudValido].safeParse(corpo);
   if (!parsed.success) {
-    return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+    return ERROS.erroValidacao(parsed.error.issues);
   }
 
   const resultado = await atualizar(crud as CrudValido, id, parsed.data as DadosEntrada, sessao);

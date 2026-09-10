@@ -20,7 +20,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cru
 
   const parsed = SCHEMAS[crud as CrudValido].safeParse(await lerCorpo(request));
   if (!parsed.success) {
-    return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+    return ERROS.erroValidacao(parsed.error.issues);
   }
 
   const dados = parsed.data as { nome?: string; qtd_barras?: never };
@@ -36,6 +36,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ cru
       };
       return ERROS.conflito(`Ja existe ${rotulos[crud as CrudValido]} "${nome}" cadastrado.`);
     }
-    return ERROS.erroInterno();
+    return ERROS.erroInterno(ex);
   }
 }

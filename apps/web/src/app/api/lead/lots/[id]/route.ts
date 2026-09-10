@@ -19,13 +19,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const parsed = redimensionarGradeSchema.safeParse(corpo);
-  if (!parsed.success) return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+  if (!parsed.success) return ERROS.erroValidacao(parsed.error.issues);
 
   try {
     await redimensionarLote(id, parsed.data, sessao);
     return Response.json({ redimensionado: true });
   } catch (ex) {
-    if (ex instanceof RegraError) return erro(ex.status, ex.message);
-    return ERROS.erroInterno();
+    if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
+    return ERROS.erroInterno(ex);
   }
 }

@@ -14,14 +14,13 @@ type ItemConfig = {
   setor?: { id: number; nome: string };
 };
 
-type Crud = 'ligas' | 'setores' | 'colaboradores' | 'modelos-grade' | 'polaridades';
+type Crud = 'ligas' | 'setores' | 'colaboradores' | 'modelos-grade';
 
 const ABAS: { chave: Crud; rotulo: string }[] = [
   { chave: 'ligas', rotulo: 'Ligas de chumbo' },
   { chave: 'setores', rotulo: 'Setores' },
   { chave: 'colaboradores', rotulo: 'Colaboradores' },
   { chave: 'modelos-grade', rotulo: 'Modelos de grade' },
-  { chave: 'polaridades', rotulo: 'Polaridades' },
 ];
 
 export default function PaginaConfiguracoes() {
@@ -99,7 +98,7 @@ export default function PaginaConfiguracoes() {
       const corpo: Record<string, unknown> = {};
       if (aba === 'ligas') Object.assign(corpo, { nome, cor });
       else if (aba === 'colaboradores') Object.assign(corpo, { nome, setor_id: Number(setorId) });
-      else if (aba === 'polaridades') Object.assign(corpo, { nome: cor });
+      
       else Object.assign(corpo, { nome });
 
       if (editandoId !== null) {
@@ -127,7 +126,7 @@ export default function PaginaConfiguracoes() {
   }
 
   const rotuloAba = ABAS.find((a) => a.chave === aba)?.rotulo ?? '';
-  const usaNomeTexto = aba !== 'polaridades';
+  const usaNomeTexto = true;
   const mostraSetores = aba === 'colaboradores';
 
   return (
@@ -155,7 +154,7 @@ export default function PaginaConfiguracoes() {
         </div>
 
         <form onSubmit={salvar} className="mb-6 grid gap-3 rounded-2xl border border-border bg-card p-4">
-          <p className="text-sm font-medium">{editandoId !== null ? `Editar ${rotuloAba.toLowerCase()}` : `Nova ${aba === 'ligas' ? 'liga de chumbo' : aba === 'setores' ? 'setor' : aba === 'colaboradores' ? 'colaborador' : aba === 'modelos-grade' ? 'modelo de grade' : 'polaridade'}`}</p>
+          <p className="text-sm font-medium">{editandoId !== null ? `Editar ${rotuloAba.toLowerCase()}` : `Nova ${aba === 'ligas' ? 'liga de chumbo' : aba === 'setores' ? 'setor' : aba === 'colaboradores' ? 'colaborador' : 'modelo de grade'}`}</p>
 
           {usaNomeTexto && (
             <label className="grid gap-1.5">
@@ -208,22 +207,6 @@ export default function PaginaConfiguracoes() {
                 ))}
               </div>
             </fieldset>
-          )}
-
-          {aba === 'polaridades' && (
-            <label className="grid gap-1.5">
-              <span className="text-xs text-muted-foreground">Polaridade</span>
-              <select
-                required
-                value={cor}
-                onChange={(e) => setCor(e.target.value as CorLiga)}
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none"
-              >
-                <option value="">Escolha…</option>
-                <option value="POSITIVO">Positivo</option>
-                <option value="NEGATIVO">Negativo</option>
-              </select>
-            </label>
           )}
 
           {erro && (

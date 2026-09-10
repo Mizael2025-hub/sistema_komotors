@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   const parsed = MAPA[acao as keyof typeof MAPA].safeParse(corpo.dados);
   if (!parsed.success) {
-    return erro(400, 'Dados invalidos.', parsed.error.flatten().fieldErrors);
+    return ERROS.erroValidacao(parsed.error.issues);
   }
 
   try {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     else resultado = await aplicarBaixaVenda(parsed.data as BaixaVendaInput, sessao);
     return Response.json(resultado);
   } catch (ex) {
-    if (ex instanceof RegraError) return erro(ex.status, ex.message);
-    return ERROS.erroInterno();
+    if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
+    return ERROS.erroInterno(ex);
   }
 }
