@@ -22,7 +22,7 @@ const TABELAS_AUD: Record<CRUD, string> = {
   polaridades: 'polaridade',
 };
 
-const ORDEM = { ativo: 'asc' as const, nome: 'asc' as const };
+const ORDEM = [{ ativo: 'asc' as const }, { nome: 'asc' as const }];
 
 export function rotulo(crud: CRUD) {
   return ROTULOS[crud];
