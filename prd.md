@@ -1138,83 +1138,85 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 ## 37. Sprints de Desenvolvimento
 
-### Sprint 1 — Fundação do Monorepo
+> **STATUS DE EXECUÇÃO (atualizado em 2026-09-10):** arquitetura adaptada para **nuvem gratuita** — Vercel (deploy/CI) + Supabase (Postgres, `sa-east-1`) — substituindo o servidor local com Docker Swarm/Traefik do texto original. Backend full-stack em **route handlers do Next.js** (`apps/web`) em vez de NestJS separado; filas Redis/BullMQ ficarão no Postgres (pg-boss) quando necessárias. Os itens marcados com **[x]** estão implementados e em produção; notas explicam adaptações. Detalhes passo a passo no `PROJECT_MAP.md` (Log de Execução).
 
-- [ ] Criar monorepo pnpm workspaces (`apps/api`, `apps/web`, `packages/shared`).
-- [ ] TypeScript strict + ESLint + Prettier (aspas simples) em toda a workspace.
-- [ ] Criar `packages/shared` com estrutura para schemas Zod, enums e constantes de domínio.
-- [ ] Criar `.env.example`, `.gitignore`, `PROJECT_MAP.md` inicial e `docs/` com MKDocs (Mermaid).
+### Sprint 1 — Fundação do Monorepo ✅
 
-### Sprint 2 — Docker Local
+- [x] Criar monorepo pnpm workspaces (`apps/web` full-stack + `packages/shared`; `apps/api` fundido no web pela adaptação).
+- [x] TypeScript strict + ESLint em toda a workspace. *(Prettier pendente.)*
+- [x] Criar `packages/shared` com schemas Zod, enums e constantes de domínio.
+- [x] Criar `.env.example`, `.gitignore`, `PROJECT_MAP.md`. *(docs/ com MKDocs pendente.)*
 
-- [ ] Dockerfiles multi-stage (api; web com output standalone).
-- [ ] `docker/docker-compose.yml` com backend, frontend, worker, postgres, redis.
-- [ ] `entrypoint-backend.sh` (wait-for-db → advisory lock → migrate deploy) e `entrypoint-worker.sh` (wait-for-db).
-- [ ] Validar `docker compose up` com healthchecks.
+### Sprint 2 — Docker Local *(substituída pela adaptação — deploy direto na Vercel)*
 
-### Sprint 3 — API NestJS Base
+- [ ] ~~Dockerfiles multi-stage~~ → desnecessário na Vercel (build nativo). Reaproveitável se migrar para VPS.
+- [ ] ~~docker-compose.yml~~ → substituído por `pnpm dev` local + Supabase remoto.
+- [ ] ~~entrypoints~~ → não aplicável.
+- [ ] Equivalente cumprido: ambiente local funcional (build + smoke test) e CI/CD por push.
 
-- [ ] CoreModule: @nestjs/config com validação Zod (fail fast), pino + request-id, helmet, throttler, CORS, trust proxy.
-- [ ] SharedModule: exception filter padronizado, utils Decimal, helpers de paginação.
-- [ ] `/api/health` (sem banco, sem auth) e `/api/health/ready` (com banco) com @nestjs/terminus.
-- [ ] Convenção de erros e respostas em português brasileiro.
+### Sprint 3 — API Base *(adaptada: route handlers Next.js em vez de NestJS)* ✅
 
-### Sprint 4 — Prisma e Banco
+- [x] Config com validação fail fast (Zod), CORS, erros padronizados. *(pino/request-id e helmet via Vercel — pendente logging estruturado.)*
+- [x] Erros padronizados em PT-BR (`@/lib/api/erros`).
+- [x] `/api/health` (sem banco, sem auth) e `/api/health/ready` (com banco).
+- [x] Convenção de erros e respostas em português brasileiro.
 
-- [ ] schema.prisma inicial: `usuario`, `log_auditoria`, `notificacao` + enums.
-- [ ] Migration inicial e `prisma/seed.ts` (usuário ADMIN via `.env`).
-- [ ] PrismaService com transações utilitárias para as regras de domínio.
+### Sprint 4 — Prisma e Banco ✅
 
-### Sprint 5 — Autenticação e RBAC
+- [x] schema.prisma inicial: `usuario`, `log_auditoria`, `notificacao` + enums *(+ `token_refresh` e todo o domínio do Módulo 1: lotes, montes, movimentações, contagens, configurações)*.
+- [x] Migration inicial e `prisma/seed.ts` (usuário ADMIN via `.env`) — banco Supabase `sa-east-1`.
+- [x] PrismaClient singleton com transações utilitárias (`$transaction` nas regras de domínio).
 
-- [ ] Login por email (JWT access + refresh com rotação; argon2id).
-- [ ] Guards globais + decorator de perfil (ADMIN/OPERADOR).
-- [ ] Alteração de senha; recuperação por email (SMTP opcional) e via comando CLI.
-- [ ] Frontend: páginas de login, proteção de rotas, renovação silenciosa de token.
+### Sprint 5 — Autenticação e RBAC ✅ *(parcial)*
 
-### Sprint 6 — Auditoria Transversal
+- [x] Login por email (JWT access + refresh com **rotação e revogação no banco**; argon2id via `@node-rs/argon2`).
+- [x] Guards por rota e perfil (`exigirSessao`/`exigirAdmin` em todos os writes; ADMIN/OPERADOR desde o dia 1).
+- [ ] Alteração de senha; recuperação por email (SMTP opcional) e via comando CLI. *(schema pronto, endpoint pendente.)*
+- [x] Frontend: página de login, proteção de rotas via `proxy.ts`, cookies httpOnly. *(Renovação silenciosa automática do access token pendente — hoje o cliente renova via /api/auth/refresh.)*
 
-- [ ] Interceptor/eventos de auditoria gravando `log_auditoria` (entidade, id, ação, valores antigos/novos JSON, usuário do contexto).
-- [ ] Endpoint de timeline por registro e consulta filtrável (ADMIN).
-- [ ] Auditoria nunca editável/apagável pela aplicação.
+### Sprint 6 — Auditoria Transversal ✅ *(parcial)*
 
-### Sprint 7 — Módulo Configurações
+- [x] Auditoria gravada em `log_auditoria` (entidade, id, ação, valores anteriores/novos JSON, usuário do contexto autenticado) via `registrarAuditoria` em todas as operações.
+- [x] Timeline por registro (histórico completo do monte). *(Consulta filtrável de auditoria p/ ADMIN pendente; timeline do lote pendente.)*
+- [x] Auditoria nunca editável/apagável pela aplicação (sem update/delete no código).
 
-- [ ] Models e CRUDs: ligas (com cor), setores, colaboradores, modelos de grade, polaridades.
-- [ ] Schemas Zod compartilhados (`packages/shared`) para cada cadastro.
-- [ ] Frontend: telas mobile-first de cadastro com validação, duplicidade e ativação/desativação.
+### Sprint 7 — Módulo Configurações ✅
 
-### Sprint 8 — Frontend Base do Sistema
+- [x] Models e CRUDs: ligas (com cor), setores, colaboradores, modelos de grade, polaridades (ativação/desativação com bloqueio de vínculos).
+- [x] Schemas Zod compartilhados (`packages/shared`) para cada cadastro.
+- [x] Frontend: telas mobile-first de cadastro com validação, duplicidade (409 em PT-BR) e ativação/desativação.
 
-- [ ] Layout responsivo (menu lateral no desktop, navegação inferior/drawer no mobile) com shadcn/ui.
-- [ ] TanStack Query (client, cache, invalidação), api client com auth, toasts, notificações internas (sininho).
-- [ ] Padrões: formulários (RHF + zodResolver), datepicker pt-BR, teclado numérico em campos de quantidade.
+### Sprint 8 — Frontend Base do Sistema *(parcial)*
 
-### Sprint 9 — Controle de Chumbo: Entrada
+- [x] Layout responsivo mobile-first. *(Menu lateral desktop/drawer mobile pendente — hoje header simples por tela.)*
+- [ ] TanStack Query — hoje fetch wrapper próprio (`@/lib/api/cliente`) com tratamento de 401. *(Migração pendente.)*
+- [ ] Padrões RHF + zodResolver, datepicker pt-BR, teclado numérico. *(inputs nativos type=date/number com inputMode.)*
 
-- [ ] Models `lote_chumbo`, `monte_chumbo`, `movimentacao_chumbo` + migration.
-- [ ] Backend: apontamento único de entrada (transação: lote + montes + movimentações ENTRADA) com validação de código único e liga.
-- [ ] Regra de peso estimado (RF-P01) quando aplicável.
-- [ ] Frontend: tela de entrada com grade 2D (2×5 expansível), popup por célula, resumo antes de salvar.
+### Sprint 9 — Controle de Chumbo: Entrada ✅
 
-### Sprint 10 — Controle de Chumbo: Estoque (Visualização)
+- [x] Models `lote_chumbo`, `monte_chumbo`, `movimentacao_chumbo` + migration.
+- [x] Backend: apontamento único de entrada (transação: lote + montes + movimentações ENTRADA) com validação de código único e liga.
+- [x] Regra de peso estimado (RF-P01) quando aplicável.
+- [x] Frontend: tela de entrada com grade 2D (2×5 expansível), popup por célula (peso/barras), resumo antes de salvar.
 
-- [ ] Backend: endpoints de saldo por liga e por lote (fórmulas RF-S07) e grade do lote.
-- [ ] Frontend: filtro por liga (chips coloridos), card de resumo principal, cards expansíveis por lote.
-- [ ] Grade 2D viva com identificação visual de status; somente a grade rola horizontal no mobile.
+### Sprint 10 — Controle de Chumbo: Estoque (Visualização) ✅
 
-### Sprint 11 — Controle de Chumbo: Ações
+- [x] Backend: `GET /api/lead/stock?liga_id` — saldos por liga e por lote (fórmulas RF-S07) + grade do lote.
+- [x] Frontend: filtro por liga (chips coloridos), card de resumo principal, cards expansíveis por lote.
+- [x] Grade 2D viva com identificação visual de status; somente a grade rola horizontal no mobile.
 
-- [ ] Backend: reservar, cancelar reserva, mover ao setor (parcial/total), baixa/venda, editar — com transações, movimentações append-only e ordem da grade para múltiplos montes.
-- [ ] Peso pela média com edição manual e auto-ajuste (RF-P04).
-- [ ] Frontend: seleção múltipla, menu de ações (duplo clique), mini-resumo de montes indisponíveis, telas de cada ação com defaults (data hoje, setor da reserva, peso auto).
-- [ ] Timeline de histórico do monte e do lote.
+### Sprint 11 — Controle de Chumbo: Ações ✅
 
-### Sprint 12 — Reconciliação de Peso
+- [x] Backend: reservar, cancelar reserva, mover ao setor (parcial/total), baixa/venda, editar — com transações, movimentações append-only e ordem da grade/ordem de liberação para múltiplos montes.
+- [x] Peso pela média com edição manual e auto-ajuste do restante (RF-P04).
+- [x] Frontend: seleção múltipla, menu de ações (duplo clique + barra fixa), mini-resumo/histórico de montes indisponíveis, telas de cada ação com defaults (data hoje, setor da reserva, peso auto pela média).
+- [x] Timeline de histórico do monte. *(Timeline dedicada do lote pendente — reconciliações aparecem nas movimentações.)*
 
-- [ ] Peso real autoritativo na primeira pesagem; recálculo dos estimados do lote (RF-P03) em transação.
-- [ ] Ajuste residual auditável quando todos pesados (RF-P05/P06).
-- [ ] Movimentações de sistema (RECONCILIACAO/AJUSTE) na timeline do lote.
+### Sprint 12 — Reconciliação de Peso ✅
+
+- [x] Peso real autoritativo na primeira pesagem; recálculo dos estimados do lote (RF-P03) em transação.
+- [x] Ajuste residual auditável quando todos pesados (RF-P05/P06) — movimentação AJUSTE.
+- [x] Movimentações de sistema (RECONCILIACAO/AJUSTE) gravadas com usuário nulo ("Sistema"). *(Exibição na timeline do lote pendente.)*
 
 ### Sprint 13 — Contagem Diária
 

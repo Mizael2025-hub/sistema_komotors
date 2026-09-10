@@ -71,6 +71,30 @@ packages/shared/src/      # dominio.ts, auth.ts, configuracoes.ts (Zod)
 - **Deploy**: commit/push na `main` → Vercel (GitHub connection). Envs na Vercel: `DATABASE_URL`, `JWT_SECRET`
 - **Migrations em prod**: ainda locais; automatizar via Vercel cron/CI é pendência
 
+## Sprints (adaptadas à arquitetura Vercel+Supabase) — status
+
+| Sprint (PRD §37) | Status | Notas |
+|---|---|---|
+| 1 — Fundação do monorepo | ✅ | pnpm workspaces, TS strict, ESLint, `packages/shared` (Zod). Prettier/docs-MKDocs pendentes |
+| 2 — Docker local | 🔁 substituída | Deploy direto na Vercel; dev local com `pnpm dev` + Supabase remoto |
+| 3 — API base | ✅ | Route handlers Next.js; health/health-ready; erros PT-BR padronizados |
+| 4 — Prisma e banco | ✅ | Schema completo Módulo 1 + `token_refresh`; seed ADMIN; Supabase sa-east-1 |
+| 5 — Auth e RBAC | ✅ parcial | Login JWT + rotação c/ revogação; guards ADMIN/OPERADOR. **Pendente:** alteração/recuperação de senha |
+| 6 — Auditoria | ✅ parcial | `registrarAuditoria` em todas as ops; timeline do monte. **Pendente:** consulta filtrável ADMIN, timeline do lote |
+| 7 — Configurações | ✅ | 5 CRUDs c/ auditoria, bloqueio de desativação c/ vínculo |
+| 8 — Frontend base | 🔶 parcial | Layout mobile-first. **Pendente:** TanStack Query, RHF, drawer/menu, toasts globais |
+| 9 — Chumbo: Entrada | ✅ | Grade 2D expansível, popup por célula, peso estimado RF-P01 |
+| 10 — Chumbo: Estoque | ✅ | Saldos RF-S07, chips por liga, cards por lote, grade viva |
+| 11 — Chumbo: Ações | ✅ | Reservar/cancelar/mover/venda/editar; append-only; ordem da grade; RF-P04 |
+| 12 — Reconciliação | ✅ | RF-P02/P03/P05/P06 com movimentações RECONCILIACAO/AJUSTE |
+| 13 — Contagem diária | ⬜ pendente | Próxima |
+| 14 — PWA offline-first | ⬜ pendente | Serwist + Dexie + fila idempotente |
+| 15 — Dashboard | ⬜ pendente | |
+| 16 — Relatórios XLSX/PDF | ⬜ pendente | Fila via pg-boss (sem Redis) |
+| 17 — Notificações internas | ⬜ pendente | |
+| 18–21 — Deploy local/Swarm/Tunnel/scripts | 🔁 substituídas | Vercel + Supabase (CI por push, envs secretas, HTTPS automático) |
+| 22 — Hardening final | ⬜ pendente | |
+
 ## Log de Execução
 
 - [x] 2026-09-09 — Último passo concluído: **módulo de autenticação + configurações no ar** (login/refresh/logout/me + CRUD de configurações com auditoria; seed ADMIN; testes locais de regressão OK)
@@ -83,4 +107,5 @@ packages/shared/src/      # dominio.ts, auth.ts, configuracoes.ts (Zod)
 - [x] 2026-09-10 — **Último passo concluído: Sprints 1–4 do Módulo 1 (Chumbo) completas** — Entrada de lote (grade 2D), Estoque (cards+grade viva), Ações (reservar/mover/venda/editar/cancelar/reserva), Reconciliação de peso (RF-P01..P07)
 - [x] 2026-09-10 — **Incidente resolvido: build de produção falhou** (`9431d16` → deploy ERROR). Causa: `virtualStoreDir` (caminho Windows) comitado no `pnpm-workspace.yaml`; a Vercel gerou o Prisma Client em `./../../C:/Users/...`. Fix (`2e14f9b`): config removida do arquivo versionado e movida para `~/.npmrc` global da máquina local. Deploy READY, estoque/saldos validados em produção
 - [x] 2026-09-10 — **Projeto migrado do OneDrive para `C:\Users\Mizael\Projetos-Sistemas\sistema-komotors`** (robocopy /MOVE, git + .vercel + .env intactos; node_modules recriados do cache). Logo depois: configs globais do pnpm de virtual store removidas — Turbopack exige symlinks dentro do projeto; com o projeto fora do OneDrive o padrão funciona sem EPERM. Build e smoke test consistente; sem config de máquina. Work Dir definitivo do projeto
+- [x] 2026-09-10 — **Auditoria de sincronização (a pedido)**: Git `main` = `origin/main` (HEAD `044d1d2`); Vercel: últimos 3 deploys READY (chumbo + docs) servindo em https://sistema-komotors.vercel.app — validado por API (`/api/lead/stock` com dados) e HTML; Supabase: banco conectado e schema em dia (health/ready 200). Sprints marcadas com [x] no PRD §37 e tabela de status adicionada aqui
 - [ ] Próximo passo pendente: **Sprint 5 — Contagem diária + Revisar** (RF-CT01..CT05) ou seed demonstrativo completo
