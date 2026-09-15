@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { enviar, consumir } from '@/lib/api/cliente';
+import { BottomSheet, TabBar, ToggleTema } from '@/components/ui';
 
 type ItemLiga = { id: number; nome: string; cor: string; ativo: boolean };
 type Montes = Record<string, { qtd_barras: number; peso?: number; ordem?: number }>;
@@ -14,7 +16,7 @@ export default function PaginaEntradaChumbo() {
   const [codigo, setCodigo] = useState('');
   const [ligas, setLigas] = useState<{ itens: ItemLiga[] } | null>(null);
   const [ligaId, setLigaId] = useState('');
-  const [fornecedor, setFornecedor] = useState('INTERNO');
+  const [fornecedor] = useState('INTERNO');
   const [pesoTotal, setPesoTotal] = useState('');
   const [linhas, setLinhas] = useState(2);
   const [colunas, setColunas] = useState(5);
@@ -115,93 +117,98 @@ export default function PaginaEntradaChumbo() {
     }
   }
 
+  const nomeLiga = (id: string) => ligas?.itens.find((l) => String(l.id) === id)?.nome ?? '';
+  const corHexLiga = (id: string) => {
+    const cor = ligas?.itens.find((l) => String(l.id) === id)?.cor;
+    return COR_LIGA_HEX[(cor as CorLiga) ?? 'CINZA'];
+  };
+
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-5 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between">
-          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">← Menu</Link>
-          <span className="text-sm font-semibold">Chumbo — Entrada</span>
-          <Link href="/chumbo/estoque" className="text-sm text-muted-foreground hover:text-foreground">Estoque →</Link>
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-background/85 px-5 py-3 backdrop-blur">
+        <div>
+          <h1 className="text-[15px] font-bold tracking-tight">Entrada de chumbo</h1>
+          <p className="text-[12px] text-[var(--muted-foreground)]">Apontamento de remessa</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ToggleTema />
+          <Link href="/chumbo/estoque" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
+            Estoque
+          </Link>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-5 py-5">
+      <main className="mx-auto w-full max-w-md px-4 pb-28 pt-4">
         <form onSubmit={salvar} className="grid gap-4">
-          <div className="grid gap-2 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2">
-            <label className="grid gap-1.5">
-              <span className="text-xs text-muted-foreground">Data da chegada</span>
-              <input type="date" value={data} onChange={(e) => setData(e.target.value)}
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none" />
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs text-muted-foreground">Numero do lote (unico)</span>
-              <input required value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex.: L-2026-001"
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none" />
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs text-muted-foreground">Liga de chumbo (toda a remessa)</span>
-              <select required value={ligaId} onChange={(e) => setLigaId(e.target.value)}
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none">
+          <div className="ios-group">
+            <div className="ios-field">
+              <span>Data chegada</span>
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="text-right" />
+            </div>
+            <div className="ios-field">
+              <span>Nº do lote</span>
+              <input required value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex.: 0915" />
+            </div>
+            <div className="ios-field">
+              <span>Liga</span>
+              <select required value={ligaId} onChange={(e) => setLigaId(e.target.value)}>
                 <option value="">Escolha…</option>
                 {(ligas?.itens ?? []).filter((l) => l.ativo).map((l) => (
                   <option key={l.id} value={l.id}>{l.nome}</option>
                 ))}
               </select>
-            </label>
-            <label className="grid gap-1.5">
-              <span className="text-xs text-muted-foreground">Fornecedor</span>
-              <select value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none">
-                <option value="INTERNO">Interno (~50 barras/monte)</option>
-                <option value="EXTERNO">Externo (~35 barras/monte)</option>
-                <option value="OUTRO">Outro</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 sm:col-span-2">
-              <span className="text-xs text-muted-foreground">Peso total informado (kg) — opcional; usado quando a remessa foi pesada de uma vez</span>
+            </div>
+            <div className="ios-field">
+              <span>Peso total</span>
               <input type="number" min={0} step="0.01" inputMode="decimal" value={pesoTotal} onChange={(e) => setPesoTotal(e.target.value)}
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm outline-none" />
-            </label>
+                placeholder="Opcional — remessa pesada de uma vez" />
+            </div>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="px-1 text-[12.5px] text-[var(--muted-foreground)]">
+            Toque nas posições onde o chumbo está fisicamente. Cada toque abre o monte.
+          </div>
+
+          <div className="ios-card p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">Grade 2D — toque onde o chumbo fisicamente esta</p>
-              <div className="flex gap-2 text-xs">
-                <span className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
-                  L: {linhas}
-                  <button type="button" onClick={() => setLinhas((v) => Math.max(1, v - 1))} className="px-1">−</button>
-                  <button type="button" onClick={() => setLinhas((v) => Math.min(20, v + 1))} className="px-1">+</button>
-                </span>
-                <span className="flex items-center gap-1 rounded-lg border border-border px-2 py-1">
-                  C: {colunas}
-                  <button type="button" onClick={() => setColunas((v) => Math.max(1, v - 1))} className="px-1">−</button>
-                  <button type="button" onClick={() => setColunas((v) => Math.min(20, v + 1))} className="px-1">+</button>
-                </span>
+              <p className="text-[14px] font-bold">Grade 2D</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setLinhas((v) => Math.min(20, v + 1))}
+                  className="flex items-center gap-1 rounded-[10px] bg-[var(--muted)] px-3 py-1.5 text-[12px] font-semibold text-[var(--tint)] active:scale-95">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 9v6M9 12h6" /></svg>
+                  Linha
+                </button>
+                <button type="button" onClick={() => setColunas((v) => Math.min(20, v + 1))}
+                  className="flex items-center gap-1 rounded-[10px] bg-[var(--muted)] px-3 py-1.5 text-[12px] font-semibold text-[var(--tint)] active:scale-95">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 9v6M9 12h6" /></svg>
+                  Coluna
+                </button>
               </div>
             </div>
 
-            <div className="grid overflow-x-auto rounded-lg" style={{ gridTemplateColumns: `repeat(${colunas}, minmax(3rem, 1fr))` }}>
+            <div className="grid gap-2 overflow-x-auto pb-1" style={{ gridTemplateColumns: `repeat(${colunas}, minmax(4.5rem, 1fr))` }}>
               {Array.from({ length: linhas * colunas }, (_, i) => {
                 const l = Math.floor(i / colunas) + 1;
                 const c = (i % colunas) + 1;
                 const k = chave(l, c);
                 const m = montes[k];
+                const preenchida = !!m;
                 return (
                   <button key={k} type="button" onClick={() => abrirCelula(l, c)}
-                    className={`m-0.5 h-14 min-w-12 rounded-lg border text-xs transition-colors ${
-                      montes[k]
-                        ? 'border-foreground/40 bg-foreground/10 font-medium'
-                        : celula === k
-                          ? 'border-foreground/60 bg-muted'
-                          : 'border-dashed border-border text-muted-foreground'
-                    }`}>
-                    {montes[k] ? (
-                      <span className="block">
-                        {m.qtd_barras} br{m.peso ? ` · ${m.peso}kg` : ''}
+                    className={`h-[4.25rem] rounded-xl transition-transform active:scale-95 ${preenchida ? 'border-2 bg-[var(--card)] shadow-sm' : 'border-2 border-dashed'}`}
+                    style={preenchida
+                      ? { borderColor: corHexLiga(ligaId) || 'var(--tint)' }
+                      : { borderColor: 'var(--border)' }}
+                  >
+                    {preenchida ? (
+                      <span className="flex flex-col items-center justify-center gap-0.5">
+                        <span className="text-[15px] font-extrabold tracking-tight">
+                          {m.peso != null ? `${fmt(m.peso)}k` : `${m.qtd_barras}b`}
+                        </span>
+                        <span className="text-[10.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>
                       </span>
                     ) : (
-                      <span className="text-[10px]">{l}.{c}</span>
+                      <span className="text-[10px] font-semibold text-[var(--muted-foreground)]">{l}.{c}</span>
                     )}
                   </button>
                 );
@@ -209,61 +216,76 @@ export default function PaginaEntradaChumbo() {
             </div>
 
             {celula && (
-              <div className="mt-3 grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[1fr_1fr_auto]">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Quantidade de barras</span>
-                  <input type="number" min={1} inputMode="numeric" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder={fornecedor === 'EXTERNO' ? '35' : '50'}
-                    className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none" />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Peso do monte (kg) — opcional</span>
-                  <input type="number" min={0} step="0.01" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)}
-                    className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-none" />
-                </label>
-                <div className="flex items-end gap-1.5">
-                  <button type="button" onClick={confirmarCelula}
-                    className="h-9 rounded-lg bg-foreground px-3 text-xs text-background">OK</button>
+              <div className="mt-3 rounded-xl bg-[var(--muted)] p-3 sm:grid-cols-[1fr_1fr_auto]">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="grid gap-1">
+                    <span className="text-[11px] font-semibold text-[var(--muted-foreground)]">Quantidade de barras</span>
+                    <input type="number" min={1} inputMode="numeric" value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="50"
+                      className="h-10 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-[15px] font-semibold outline-none" />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-[11px] font-semibold text-[var(--muted-foreground)]">Peso (kg) — opcional</span>
+                    <input type="number" min={0} step="0.01" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)}
+                      className="h-10 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-[15px] font-semibold outline-none" />
+                  </label>
+                </div>
+                <div className="mt-2.5 flex gap-2">
                   <button type="button" onClick={removerCelula}
-                    className="h-9 rounded-lg border border-border px-2 text-xs">Limpar</button>
+                    className="ios-btn ios-btn-secundario flex-1 py-2.5 text-[14px]">Remover</button>
+                  <button type="button" onClick={confirmarCelula}
+                    className="ios-btn ios-btn-primario flex-1 py-2.5 text-[14px]">OK</button>
                 </div>
               </div>
             )}
 
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              Ordem de liberação padrão: cima→baixo, esquerda→direita (editável pela tela de estoque).
+            <p className="mt-2 text-[10.5px] text-[var(--muted-foreground)]">
+              Ordem de liberação padrão: cima→baixo, esquerda→direita. Linhas: {linhas} · Colunas: {colunas}
             </p>
           </div>
 
-          <div className="grid gap-2 rounded-2xl border border-border bg-card p-4 sm:grid-cols-3">
-            <div><p className="text-[11px] text-muted-foreground">Montes</p><p className="text-lg font-semibold">{resumo.montes}</p></div>
-            <div><p className="text-[11px] text-muted-foreground">Barras</p><p className="text-lg font-semibold">{resumo.barras || '—'}</p></div>
-            <div>
-              <p className="text-[11px] text-muted-foreground">Peso total {pesoTotal !== '' ? '(informado)' : '(somado)'}</p>
-              <p className="text-lg font-semibold">
-                {resumo.peso != null
-                  ? `${resumo.peso} kg`
-                  : Object.values(montes).some((m) => m.peso == null) && Object.keys(montes).length > 0
-                    ? 'Estimado pelo sistema'
-                    : '—'}
-              </p>
+          <div className="ios-card p-4">
+            <p className="mb-3 text-[14px] font-bold">Resumo do lote</p>
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="ios-stat text-[var(--tint)]">
+                <p className="text-[19px] font-extrabold tracking-tight" style={{ color: 'var(--tint)' }}>{resumo.montes}</p>
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">Montes</p>
+              </div>
+              <div className="ios-stat">
+                <p className="text-[19px] font-extrabold tracking-tight" style={{ color: 'var(--tint)' }}>{resumo.barras || '—'}</p>
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">Barras</p>
+              </div>
+              <div className="ios-stat">
+                <p className="text-[15px] font-extrabold tracking-tight" style={{ color: 'var(--tint)' }}>
+                  {resumo.peso != null ? `${fmt(resumo.peso)} kg` : Object.values(montes).some((m) => m.peso == null) && resumo.montes > 0 ? 'Estimado' : '—'}
+                </p>
+                <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{pesoTotal !== '' ? 'Peso informado' : 'Peso'}</p>
+              </div>
             </div>
           </div>
 
-          {erro && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>}
-          {sucesso && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">{sucesso}</p>}
+          {erro && (
+            <p role="alert" className="rounded-xl px-3 py-2 text-sm font-medium" style={{ background: 'var(--tint-soft)', color: 'var(--destructive)' }}>{erro}</p>
+          )}
+          {sucesso && (
+            <p className="rounded-xl px-3 py-2 text-sm font-medium" style={{ background: 'var(--verde-soft)', color: 'var(--verde)' }}>{sucesso}</p>
+          )}
 
           <button type="submit" disabled={enviando}
-            className="h-11 rounded-xl bg-foreground text-background text-sm font-medium hover:opacity-90 disabled:opacity-50">
-            {enviando ? 'Salvando…' : 'Salvar entrada de chumbo'}
+            className="ios-btn ios-btn-primario h-11 disabled:opacity-50">
+            {enviando ? 'Salvando…' : 'Salvar entrada'}
           </button>
 
           {sucesso && (
-            <Link href="/chumbo/estoque" className="text-center text-sm text-muted-foreground hover:text-foreground">
-              Ver estoque de chumbo →
+            <Link href="/chumbo/estoque" className="text-center text-[13px] font-semibold text-[var(--tint)]">
+              Ver estoque →
             </Link>
           )}
         </form>
       </main>
+
+      <TabBar />
     </div>
   );
 }
+
+const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(n);

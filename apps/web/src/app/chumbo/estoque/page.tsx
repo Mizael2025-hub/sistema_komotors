@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { COR_LIGA_HEX, type CorLiga, type StatusMonte } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
+import { BottomSheet, TabBar, ToggleTema } from '@/components/ui';
 
 type Monte = {
   id: number;
@@ -89,6 +90,17 @@ const ROTULO_TIPO: Record<string, string> = {
   AJUSTE: 'Ajuste residual (sistema)',
 };
 
+const COR_TIPO: Record<string, string> = {
+  ENTRADA: 'var(--verde)',
+  RESERVA: 'var(--laranja)',
+  CANCELAMENTO_RESERVA: 'var(--muted-foreground)',
+  MOVIMENTO_SETOR: 'var(--roxo)',
+  BAIXA_VENDA: 'var(--destructive)',
+  EDICAO: 'var(--tint)',
+  RECONCILIACAO: 'var(--teal)',
+  AJUSTE: 'var(--teal)',
+};
+
 const fmtPeso = (n: number | null | undefined) =>
   n == null ? '—' : `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(n)} kg`;
 
@@ -97,13 +109,29 @@ const dataBr = (iso: string) => (!iso ? '—' : `${iso.slice(8, 10)}/${iso.slice
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
 function classeMonte(m: Monte, selecionado: boolean) {
-  if (m.status === 'VENDIDO' || m.status === 'AJUSTADO') return 'border border-dashed border-border opacity-40';
-  if (selecionado) return 'border-2 border-foreground bg-foreground/10';
-  if (m.status === 'RESERVADO') return 'border-2 border-amber-500 bg-amber-500/10';
-  if (m.status === 'NO_SETOR') return 'border border-blue-500/60 bg-blue-500/10';
-  if (m.status === 'PARCIAL') return 'border border-purple-500/60 bg-purple-500/10';
-  return 'border border-foreground/30';
+  if (m.status === 'VENDIDO' || m.status === 'AJUSTADO')
+    return 'border border-dashed border-[var(--border)] opacity-40 grayscale';
+  if (selecionado)
+    return 'border-2 border-[var(--tint)] bg-[var(--tint-soft)] ring-2 ring-[var(--tint)] ring-offset-1 ring-offset-[var(--card)] scale-[1.03]';
+  if (m.status === 'RESERVADO') return 'border-2 border-[var(--laranja)] bg-[var(--laranja-soft)]';
+  if (m.status === 'NO_SETOR') return 'border border-dashed border-[var(--roxo)]/60 bg-[var(--roxo-soft)] opacity-60';
+  if (m.status === 'PARCIAL') return 'border border-dashed border-[var(--teal)] bg-[var(--teal-soft)]';
+  return 'border-2 border-[var(--tint)]/40';
 }
+
+function corSelos(status: string) {
+  if (status === 'RESERVADO') return { fundo: 'var(--laranja-soft)', cor: 'var(--laranja)' };
+  if (status === 'NO_SETOR') return { fundo: 'var(--roxo-soft)', cor: 'var(--roxo)' };
+  if (status === 'PARCIAL') return { fundo: 'var(--teal-soft)', cor: 'var(--teal)' };
+  return { fundo: 'var(--muted-foreground)', cor: 'var(--muted-foreground)' };
+}
+
+const ROTULO_ACAO: Record<string, string> = {
+  reservar: 'Reservar',
+  'mover-setor': 'Mover ao setor',
+  venda: 'Baixa/Venda',
+  editar: 'Editar',
+};
 
 export default function PaginaEstoqueChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
@@ -299,96 +327,121 @@ export default function PaginaEstoqueChumbo() {
     }
   }
 
+  const estatistica = (rotulo: string, dado: { peso: number | null; barras: number }, extra?: { fundo: string; cor: string }) => (
+    <div className="ios-stat" style={extra ? { background: extra.fundo } : {}}>
+      <p className={`text-[19px] font-extrabold tracking-tight`} style={{ color: extra ? extra.cor : undefined }}>
+        {fmtPeso(dado.peso)}
+      </p>
+      <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">{dado.barras} barras</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-[var(--muted-foreground)]">{rotulo}</p>
+    </div>
+  );
+
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 flex gap-2 items-center border-b border-border bg-background/95 px-5 py-3 backdrop-blur">
-        <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">← Menu</Link>
-        <span className="mx-auto text-sm font-semibold">Chumbo — Estoque</span>
-        <Link href="/chumbo/entrada" className="text-sm text-muted-foreground hover:text-foreground">+ Entrada</Link>
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-background/85 px-5 py-3 backdrop-blur">
+        <div>
+          <h1 className="text-[15px] font-bold tracking-tight">Estoque</h1>
+          <p className="text-[12px] text-[var(--muted-foreground)]">Chumbo · {estoque?.liga.nome ?? 'escolha a liga'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <ToggleTema />
+          <Link href="/" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
+            Menu
+          </Link>
+        </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-5 py-5">
-        <div className="mb-4 flex flex-wrap gap-2">
+      <main className="mx-auto w-full max-w-3xl px-4 pb-28 pt-4">
+        <div className="mb-3 flex gap-2.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none' }}>
           {(ligasItens ?? []).map((l) => (
             <button
               key={l.id}
               onClick={() => trocarLiga(l.id)}
               aria-pressed={ligaId === l.id}
-              className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm transition-colors ${
-                ligaId === l.id ? 'font-medium ring-2 ring-foreground ring-offset-1' : 'text-muted-foreground hover:text-foreground'
+              className={`flex shrink-0 items-center gap-2 rounded-full border-[1.5px] px-4 py-2 text-[13.5px] transition-all active:scale-95 ${
+                ligaId === l.id
+                  ? 'border-[var(--tint)] bg-[var(--tint-soft)] font-semibold text-[var(--tint)]'
+                  : 'ios-card-flat font-medium'
               }`}
             >
-              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
               {l.nome}
             </button>
           ))}
         </div>
 
         {ligasItens != null && ligasItens.length === 0 && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-[var(--muted-foreground)]">
             Nenhuma liga ativa. Cadastre em <Link href="/configuracoes" className="underline">Configurações</Link>.
           </p>
         )}
         {ligasItens != null && ligaId == null && ligasItens.length > 0 && (
-          <p className="text-sm text-muted-foreground">Escolha uma liga para consultar o estoque.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Escolha uma liga para consultar o estoque.</p>
         )}
         {ligasItens != null && ligaId != null && estoque === null && !erro && (
-          <p className="animate-pulse text-sm text-muted-foreground">Carregando estoque da liga selecionada…</p>
+          <p className="animate-pulse text-sm text-[var(--muted-foreground)]">Carregando estoque da liga selecionada…</p>
         )}
 
-        {erro && modal !== 'acoes' && <p role="alert" className="mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>}
-        {aviso && <p className="mb-3 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">{aviso}</p>}
+        {erro && modal !== 'acoes' && (
+          <p role="alert" className="mb-3 rounded-xl px-3 py-2 text-sm font-medium" style={{ background: 'var(--tint-soft)', color: 'var(--destructive)' }}>{erro}</p>
+        )}
+        {aviso && (
+          <p className="mb-3 rounded-xl px-3 py-2 text-sm font-medium" style={{ background: 'var(--verde-soft)', color: 'var(--verde)' }}>{aviso}</p>
+        )}
 
         {estoque && (
           <>
-            <div className="mb-6 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Disponível no estoque</p>
-                <p className="text-lg font-semibold">{fmtPeso(estoque.resumo.disponivel.peso)}</p>
-                <p className="text-xs text-muted-foreground">{estoque.resumo.disponivel.barras} barras</p>
+            <div className="ios-card mb-5 p-4">
+              <div className="grid grid-cols-3 gap-2.5">
+                {estatistica('Disponível', estoque.resumo.disponivel, { fundo: 'var(--verde-soft)', cor: 'var(--verde)' })}
+                {estatistica('No setor', estoque.resumo.no_setor, { fundo: 'var(--roxo-soft)', cor: 'var(--roxo)' })}
+                {estatistica('Reservado', estoque.resumo.reservado, { fundo: 'var(--laranja-soft)', cor: 'var(--laranja)' })}
               </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">No setor</p>
-                <p className="text-lg font-semibold">{fmtPeso(estoque.resumo.no_setor.peso)}</p>
-                <p className="text-xs text-muted-foreground">{estoque.resumo.no_setor.barras} barras</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Reservado</p>
-                <p className="text-lg font-semibold">{fmtPeso(estoque.resumo.reservado.peso)}</p>
-                <p className="text-xs text-muted-foreground">{estoque.resumo.reservado.barras} barras</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Vendido acumulado</p>
-                <p className="text-lg font-semibold">{fmtPeso(estoque.resumo.vendido.peso)}</p>
-                <p className="text-xs text-muted-foreground">{estoque.resumo.vendido.barras} barras</p>
-              </div>
+              <p className="mt-2.5 flex justify-between border-t border-[var(--border)] pt-2 text-[12px] text-[var(--muted-foreground)]">
+                <span>Vendido acumulado: <b className="text-[var(--foreground)]">{fmtPeso(estoque.resumo.vendido.peso)}</b></span>
+                <span>{estoque.lotes.length} lote(s)</span>
+              </p>
             </div>
 
-            <div className="grid gap-3">
-              {estoque.lotes.map((l) => (
-                <div key={l.id} className={`rounded-2xl border border-border bg-card ${l.encerrado ? 'opacity-70' : ''}`}>
-                  <button onClick={() => alternarExpandido(l.id)} className="w-full px-4 py-3 text-left">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium">
+            <div className="grid gap-3.5">
+              {estoque.lotes.map((l) => {
+                const corHex = COR_LIGA_HEX[(estoque.liga.cor as CorLiga) ?? 'CINZA'];
+                return (
+                <div key={l.id} className={`ios-card ${l.encerrado ? 'opacity-70' : ''} overflow-hidden`}>
+                  <button onClick={() => alternarExpandido(l.id)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-[var(--muted)]">
+                    <span
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[12px] font-extrabold text-white"
+                      style={{ backgroundColor: corHex, color: ['AMARELO'].includes((estoque.liga.cor as CorLiga) ?? '') ? '#1c1c1e' : '#fff' }}
+                    >
+                      {[...estoque.liga.nome].find((c) => /[0-9]/.test(c)) ?? 'L'}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 text-[15.5px] font-bold">
                         Lote {l.codigo}
-                        {l.encerrado && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase text-muted-foreground">encerrado</span>}
-                      </p>
-                      <span className="text-xs text-muted-foreground">{expandidos.has(l.id) ? 'recolher ▲' : 'expandir ▼'}</span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Chegada {dataBr(l.data_chegada)} · {fmtPeso(l.resumo.peso)} disponível · {l.resumo.barras}/{l.total_barras} barras · {l.total_montes} montes
-                    </p>
+                        {l.encerrado && <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] uppercase text-[var(--muted-foreground)]">encerrado</span>}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12.5px] text-[var(--muted-foreground)]">
+                        {dataBr(l.data_chegada)} · {fmtPeso(l.resumo.peso)} · {l.resumo.barras}/{l.total_barras} barras · {l.total_montes} montes
+                      </span>
+                    </span>
+                    <svg
+                      viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2.4" strokeLinecap="round"
+                      className={`h-4 w-4 shrink-0 transition-transform ${expandidos.has(l.id) ? 'rotate-180' : ''}`}
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
                   </button>
 
                   {expandidos.has(l.id) && (
-                    <div className="border-t border-border px-4 py-3">
-                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span>Barras disponíveis: <b className="text-foreground">{l.resumo.barras}</b></span>
-                        <span>Peso disponível: <b className="text-foreground">{fmtPeso(l.resumo.peso)}</b></span>
+                    <div className="border-t border-[var(--border)] px-4 py-3">
+                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[var(--muted-foreground)]">
+                        <span>Disponível: <b className="text-[var(--foreground)]">{l.resumo.barras} barras</b></span>
+                        <span>Peso: <b className="text-[var(--foreground)]">{fmtPeso(l.resumo.peso)}</b></span>
                         <span>Na chegada: {l.total_barras} barras{weightResumoTotal(l)}</span>
                       </div>
 
-                      <div className="grid gap-1.5 overflow-x-auto" style={{ gridTemplateColumns: `repeat(${l.colunas}, minmax(3rem, 1fr))` }}>
+                      <div className="grid gap-1.5 overflow-x-auto pb-1" style={{ gridTemplateColumns: `repeat(${l.colunas}, minmax(4.5rem, 1fr))` }}>
                         {(() => {
                           const celulas: (Monte | null)[] = new Array(l.linhas * l.colunas).fill(null);
                           for (const m of l.montes) celulas[(m.linha - 1) * l.colunas + (m.coluna - 1)] = m;
@@ -402,9 +455,9 @@ export default function PaginaEstoqueChumbo() {
                                   onClick={() => setSelecionados(new Set())}
                                   onDragOver={(e) => { if (arrastando != null) e.preventDefault(); }}
                                   onDrop={() => dragSolto(l.id, linha02, coluna02, l.linhas, l.colunas)}
-                                  className="h-14 min-w-12 rounded-lg border border-dashed border-border text-[10px] text-muted-foreground"
+                                  className="grid h-[4.25rem] place-items-center rounded-xl border-2 border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]"
                                 >
-                                  {arrastando != null ? '↦' : `${linha02}.${coluna02}`}
+                                  {arrastando != null ? '↦' : ''}
                                 </button>
                               );
                             }
@@ -415,36 +468,75 @@ export default function PaginaEstoqueChumbo() {
                                 onDoubleClick={() => (m.status === 'VENDIDO' || m.status === 'AJUSTADO' ? abrirHistorico(m.id) : abrirAcoes())}
                                 draggable={m.status !== 'VENDIDO' && m.status !== 'AJUSTADO'}
                                 onDragStart={() => setArrastando(m.id)}
-                                className={`m-0.5 h-14 min-w-12 rounded-lg p-1 text-left text-[10px] leading-tight ${classeMonte(m, selecionados.has(m.id))}`}
+                                className={`relative flex h-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-xl text-center leading-tight shadow-sm transition-transform active:scale-95 ${classeMonte(m, selecionados.has(m.id))}`}
                               >
-                                <span className="block truncate font-medium">{m.qtd_barras} br</span>
-                                <span className="block truncate">{m.peso_exibido != null ? `${m.peso_exibido}${m.estimado ? '*' : ''}kg` : '—'}</span>
-                                {ROTULO_STATUS[m.status] && <span className="block truncate text-[9px] text-muted-foreground">{ROTULO_STATUS[m.status]}</span>}
+                                {m.peso_exibido != null ? (
+                                  <span className="text-[14px] font-extrabold tracking-tight">{fmtPeso(m.peso_exibido).replace(' kg', '')}<span className="text-[9px] font-bold text-[var(--muted-foreground)]">kg</span></span>
+                                ) : (
+                                  <span className="text-[14px] font-extrabold">—</span>
+                                )}
+                                <span className="text-[10.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>
+                                {m.estimado && <span className="absolute bottom-0.5 text-[8px] font-bold tracking-wide text-[var(--laranja)]">ESTIMADO</span>}
+                                {selecionados.has(m.id) && (
+                                  <span className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--tint)] text-[10px] font-bold text-white shadow">✓</span>
+                                )}
                               </button>
                             );
                           });
                         })()}
                       </div>
 
-                      <p className="mt-1.5 text-[10px] text-muted-foreground">
-                        * = peso estimado · 1 toque seleciona/desseleciona · clique em área vazia limpa · duplo clique abre ações (ou resumo de indisponível) · arraste para reorganizar
+                      <div className="ios-legend mt-3">
+                        <div><i style={{ border: '2px solid var(--tint)', opacity: 0.5 }} />Em estoque</div>
+                        <div><i style={{ background: 'var(--laranja-soft)', border: '1.5px solid var(--laranja)' }} />Reservado</div>
+                        <div><i style={{ border: '2px dashed var(--teal)' }} />Parcial</div>
+                        <div><i style={{ border: '2px dashed var(--roxo)', opacity: 0.6 }} />No setor</div>
+                        <div><i style={{ background: 'var(--muted)' }} />Vendido</div>
+                        <div><i style={{ border: '2px dashed var(--border)' }} />Vazio</div>
+                      </div>
+                      <p className="mt-2 text-[10px] text-[var(--muted-foreground)]">
+                        Toque seleciona/desseleciona · toque no vazio limpa · duplo clique abre ações (ou resumo do indisponível) · arraste para reorganizar
                       </p>
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
               {estoque.lotes.length === 0 && (
-                <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                  Nenhum lote desta liga ainda — <Link href="/chumbo/entrada" className="underline">registrar entrada</Link>
+                <p className="rounded-2xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                  Nenhum lote desta liga ainda — <Link href="/chumbo/entrada" className="font-semibold text-[var(--tint)] underline">registrar entrada</Link>
                 </p>
               )}
             </div>
 
             {selecionados.size > 0 && (
-              <div className="sticky bottom-3 mt-4 flex items-center justify-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2 shadow-sm backdrop-blur">
-                <span className="text-xs text-muted-foreground">{selecionados.size} selecionado(s)</span>
-                <button onClick={abrirAcoes} className="rounded-full bg-foreground px-3.5 py-1 text-xs text-background">Ações</button>
-                <button onClick={() => setSelecionados(new Set())} className="rounded-full border border-border px-3 py-1 text-xs">Limpar</button>
+              <div className="fixed bottom-16 left-1/2 z-40 w-[calc(100%-20px)] max-w-2xl -translate-x-1/2 rounded-[20px] bg-[var(--card)] p-3.5 shadow-[var(--sombra-card)] border border-[var(--border)]">
+                <div className="mb-2.5 flex items-center justify-between px-1">
+                  <b className="text-[14px]">{selecionados.size} {selecionados.size > 1 ? 'montes' : 'monte'} selecionado(s)</b>
+                  <button onClick={() => setSelecionados(new Set())} className="text-[12px] font-semibold text-[var(--muted-foreground)]">Limpar</button>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {['reservar', 'mover-setor', 'venda', 'editar'].map((a) => {
+                    const cor =
+                      a === 'reservar' ? 'var(--laranja)' : a === 'mover-setor' ? 'var(--roxo)' : a === 'venda' ? 'var(--destructive)' : 'var(--tint)';
+                    return (
+                      <button
+                        key={a}
+                        onClick={() => { setAcaoAtiva(a as 'reservar'); abrirAcoes(); }}
+                        className="flex flex-col items-center gap-1 rounded-xl bg-[var(--muted)] py-2.5 text-[11px] font-bold active:scale-95"
+                        style={{ color: cor }}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          {a === 'reservar' ? <path d="M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" /> : a === 'mover-setor' ? <path d="M3 12l9-9 9 9M5 10v10h14V10" /> : a === 'venda' ? <path d="M21 12c-1 5-5 8-9 10-4-2-8-5-9-10V5l9-3 9 3zM9 12l2 2 4-5" /> : <path d="M17 3l4 4L8 20l-5 1 1-5z" />}
+                        </svg>
+                        {a === 'mover-setor' ? 'Mover' : a === 'venda' ? 'Venda' : ROTULO_ACAO[a]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={() => { const id = [...selecionados][0]; if (id != null) abrirHistorico(id); }} className="mt-2 w-full rounded-xl py-2 text-[13px] font-bold text-[var(--tint)] active:bg-[var(--muted)]">
+                  Ver histórico do primeiro monte selecionado
+                </button>
               </div>
             )}
           </>
@@ -452,176 +544,170 @@ export default function PaginaEstoqueChumbo() {
       </main>
 
       {modal === 'acoes' && acaoAtiva && estoque && (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" onClick={() => setModal(null)}>
-          <div className="relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-            {enviando && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
-                <p className="rounded-full bg-foreground px-4 py-2 text-xs text-background">Aplicando operação…</p>
-              </div>
-            )}
-            <div className="mb-3 flex items-center justify-between">
-              <p className="font-medium">Ações — {selecionados.size} monte(s)</p>
-              <button onClick={() => setModal(null)} className="text-sm text-muted-foreground">✕</button>
+        <BottomSheet titulo={`Ações — ${selecionados.size} monte(s)`} onClose={() => setModal(null)}>
+          {enviando && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+              <p className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs text-[var(--background)] font-semibold">Aplicando operação…</p>
             </div>
-
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1 text-xs">
-              {(['reservar', 'mover-setor', 'venda', 'editar'] as const).map((a) => (
-                <button key={a} onClick={() => setAcaoAtiva(a)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 ${acaoAtiva === a ? 'bg-foreground text-background' : 'border border-border text-muted-foreground'}`}>
-                  {a === 'reservar' ? 'Reservar' : a === 'mover-setor' ? 'Mover ao setor' : a === 'venda' ? 'Baixa/Venda' : 'Editar'}
-                </button>
-              ))}
-            </div>
-
-            {acaoAtiva === 'reservar' && (
-              <div className="grid gap-3">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Setor de destino</span>
-                  <select value={formReserva.setor_id} onChange={(e) => setFormReserva({ ...formReserva, setor_id: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                    <option value="">Escolha…</option>
-                    {estoque.setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
-                  </select>
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Observação (opcional)</span>
-                  <input value={formReserva.observacao} onChange={(e) => setFormReserva({ ...formReserva, observacao: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <p className="text-[10px] text-muted-foreground">O chumbo continua no estoque, marcado como separado para o setor escolhido.</p>
-              </div>
-            )}
-
-            {acaoAtiva === 'mover-setor' && (
-              <div className="grid gap-3">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Setor de destino</span>
-                  <select value={formMover.setor_id} onChange={(e) => setFormMover({ ...formMover, setor_id: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                    <option value="">Escolha…</option>
-                    {estoque.setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
-                  </select>
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Barras (vazio = mover o monte todo; frações permitidas)</span>
-                  <input type="number" min={1} inputMode="numeric" value={formMover.qtd_barras}
-                    onChange={(e) => setFormMover({ ...formMover, qtd_barras: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Peso informado (kg) — se pesado de fato, vira peso real</span>
-                  <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formMover.peso}
-                    onChange={(e) => setFormMover({ ...formMover, peso: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Observação (opcional)</span>
-                  <input value={formMover.observacao} onChange={(e) => setFormMover({ ...formMover, observacao: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-              </div>
-            )}
-
-            {acaoAtiva === 'venda' && (
-              <div className="grid gap-3">
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Destino</span>
-                  <input value={formVenda.destino} onChange={(e) => setFormVenda({ ...formVenda, destino: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Para quem</span>
-                  <input value={formVenda.para_quem} onChange={(e) => setFormVenda({ ...formVenda, para_quem: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-muted-foreground">Data</span>
-                    <input type="date" value={formVenda.data} onChange={(e) => setFormVenda({ ...formVenda, data: e.target.value })}
-                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="text-[11px] text-muted-foreground">Barras (vazio = tudo)</span>
-                    <input type="number" min={1} inputMode="numeric" value={formVenda.qtd_barras}
-                      onChange={(e) => setFormVenda({ ...formVenda, qtd_barras: e.target.value })}
-                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                  </label>
-                </div>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Peso (kg) — padrão: média do monte, editável</span>
-                  <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formVenda.peso}
-                    onChange={(e) => setFormVenda({ ...formVenda, peso: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                  <span className="text-[10px] text-muted-foreground">Editar o peso marca como pesagem real (RF-P02/P04) e dispara a reconciliação do lote.</span>
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Observação (aparece no relatório)</span>
-                  <input value={formVenda.observacao} onChange={(e) => setFormVenda({ ...formVenda, observacao: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-              </div>
-            )}
-
-            {acaoAtiva === 'editar' && (
-              <div className="grid gap-3">
-                {selecionados.size > 1 && <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700">A edição aplica ao primeiro monte da seleção.</p>}
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Novo peso exibido (kg)</span>
-                  <input type="number" min={0} step="0.01" inputMode="decimal" value={formEditar.peso}
-                    onChange={(e) => setFormEditar({ ...formEditar, peso: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-                <label className="grid gap-1">
-                  <span className="text-[11px] text-muted-foreground">Nova quantidade de barras</span>
-                  <input type="number" min={1} inputMode="numeric" value={formEditar.qtd_barras}
-                    onChange={(e) => setFormEditar({ ...formEditar, qtd_barras: e.target.value })}
-                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm" />
-                </label>
-              </div>
-            )}
-
-            {erro && <p role="alert" className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{erro}</p>}
-
-            <button onClick={executarAcao}
-              disabled={enviando || (acaoAtiva === 'reservar' && !formReserva.setor_id) || (acaoAtiva === 'mover-setor' && !formMover.setor_id) || (acaoAtiva === 'venda' && (!formVenda.destino || !formVenda.para_quem))}
-              className="mt-4 h-10 w-full rounded-xl bg-foreground text-background text-sm font-medium disabled:opacity-50">
-              {enviando ? 'Aplicando…' : 'Confirmar'}
-            </button>
+          )}
+          <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+            {(['reservar', 'mover-setor', 'venda', 'editar'] as const).map((a) => (
+              <button key={a} onClick={() => setAcaoAtiva(a)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
+                  acaoAtiva === a ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--muted)] text-[var(--muted-foreground)]'
+                }`}>
+                {ROTULO_ACAO[a]}
+              </button>
+            ))}
           </div>
-        </div>
+
+          {acaoAtiva === 'reservar' && (
+            <div className="ios-group">
+              <label className="ios-field">
+                <span>Setor de destino</span>
+                <select value={formReserva.setor_id} onChange={(e) => setFormReserva({ ...formReserva, setor_id: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {estoque.setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
+                </select>
+              </label>
+              <label className="ios-field">
+                <span>Observação</span>
+                <input value={formReserva.observacao} onChange={(e) => setFormReserva({ ...formReserva, observacao: e.target.value })} placeholder="Opcional" />
+              </label>
+            </div>
+          )}
+
+          {acaoAtiva === 'mover-setor' && (
+            <div className="ios-group">
+              <label className="ios-field">
+                <span>Setor</span>
+                <select value={formMover.setor_id} onChange={(e) => setFormMover({ ...formMover, setor_id: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {estoque.setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
+                </select>
+              </label>
+              <label className="ios-field">
+                <span>Barras</span>
+                <input type="number" min={1} inputMode="numeric" value={formMover.qtd_barras}
+                  onChange={(e) => setFormMover({ ...formMover, qtd_barras: e.target.value })} placeholder="Vazio = monte todo" />
+              </label>
+              <label className="ios-field">
+                <span>Peso (kg)</span>
+                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formMover.peso}
+                  onChange={(e) => setFormMover({ ...formMover, peso: e.target.value })} placeholder="Aut. pela média" />
+              </label>
+              <label className="ios-field">
+                <span>Observação</span>
+                <input value={formMover.observacao} onChange={(e) => setFormMover({ ...formMover, observacao: e.target.value })} placeholder="Opcional" />
+              </label>
+            </div>
+          )}
+
+          {acaoAtiva === 'venda' && (
+            <div className="ios-group">
+              <label className="ios-field">
+                <span>Destino</span>
+                <input value={formVenda.destino} onChange={(e) => setFormVenda({ ...formVenda, destino: e.target.value })} placeholder="Para onde vai" />
+              </label>
+              <label className="ios-field">
+                <span>Para quem</span>
+                <input value={formVenda.para_quem} onChange={(e) => setFormVenda({ ...formVenda, para_quem: e.target.value })} placeholder="Nome do responsável" />
+              </label>
+              <label className="ios-field">
+                <span>Data</span>
+                <input type="date" value={formVenda.data} onChange={(e) => setFormVenda({ ...formVenda, data: e.target.value })} className="text-right" />
+              </label>
+              <label className="ios-field">
+                <span>Barras</span>
+                <input type="number" min={1} inputMode="numeric" value={formVenda.qtd_barras}
+                  onChange={(e) => setFormVenda({ ...formVenda, qtd_barras: e.target.value })} placeholder="Vazio = tudo" />
+              </label>
+              <label className="ios-field">
+                <span>Peso (kg)</span>
+                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formVenda.peso}
+                  onChange={(e) => setFormVenda({ ...formVenda, peso: e.target.value })} placeholder="Aut. pela média" />
+              </label>
+              <label className="ios-field">
+                <span>Observação</span>
+                <input value={formVenda.observacao} onChange={(e) => setFormVenda({ ...formVenda, observacao: e.target.value })} placeholder="Aparece no relatório" />
+              </label>
+              <p className="px-4 pb-3 pt-2 text-[11px] text-[var(--muted-foreground)]">
+                Editar o peso marca como pesagem real e dispara a reconciliação do lote.
+              </p>
+            </div>
+          )}
+
+          {acaoAtiva === 'editar' && (
+            <div className="ios-group">
+              {selecionados.size > 1 && (
+                <p className="rounded-xl px-4 py-2 text-xs font-medium" style={{ background: 'var(--laranja-soft)', color: 'var(--laranja)' }}>
+                  A edição aplica ao primeiro monte da seleção.
+                </p>
+              )}
+              <label className="ios-field">
+                <span>Novo peso (kg)</span>
+                <input type="number" min={0} step="0.01" inputMode="decimal" value={formEditar.peso}
+                  onChange={(e) => setFormEditar({ ...formEditar, peso: e.target.value })} />
+              </label>
+              <label className="ios-field">
+                <span>Barras</span>
+                <input type="number" min={1} inputMode="numeric" value={formEditar.qtd_barras}
+                  onChange={(e) => setFormEditar({ ...formEditar, qtd_barras: e.target.value })} />
+              </label>
+            </div>
+          )}
+
+          {erro && (
+            <p role="alert" className="mt-3 rounded-xl px-3 py-2 text-sm font-medium" style={{ background: 'var(--tint-soft)', color: 'var(--destructive)' }}>{erro}</p>
+          )}
+
+          <button onClick={executarAcao}
+            disabled={enviando || (acaoAtiva === 'reservar' && !formReserva.setor_id) || (acaoAtiva === 'mover-setor' && !formMover.setor_id) || (acaoAtiva === 'venda' && (!formVenda.destino || !formVenda.para_quem))}
+            className="ios-btn ios-btn-primario mt-4 h-11 disabled:opacity-50">
+            {enviando ? 'Aplicando…' : 'Confirmar'}
+          </button>
+        </BottomSheet>
       )}
 
       {modal === 'historico' && hist && (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center sm:p-6" onClick={() => setModal(null)}>
-          <div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <p className="font-medium">Histórico do monte</p>
-              <button onClick={() => setModal(null)} className="text-sm text-muted-foreground">✕</button>
-            </div>
-            <div className="mb-4 rounded-xl border border-border bg-background p-3 text-xs">
-              <p>Liga {hist.monte.lote.liga.nome} · Lote {hist.monte.lote.codigo}</p>
-              <p>{hist.monte.qtd_barras} barras · {fmtPeso(hist.monte.peso_exibido)}{hist.monte.estimado ? ' (estimado)' : ''}</p>
-              <p className="text-muted-foreground">Status: {ROTULO_STATUS[hist.monte.status] || 'Em estoque'}{hist.monte.setor_reserva ? ` — ${hist.monte.setor_reserva}` : ''}</p>
-            </div>
-            <ol className="relative border-l border-border pl-4">
-              {hist.movimentacoes.map((mv) => (
-                <li key={mv.id} className="mb-4">
-                  <span className="absolute -left-[5px] mt-1 h-2.5 w-2.5 rounded-full bg-foreground/50" />
-                  <p className="text-sm font-medium">{ROTULO_TIPO[mv.tipo] ?? mv.tipo}</p>
-                  <p className="text-xs text-muted-foreground">
+        <BottomSheet titulo="Histórico do monte" onClose={() => setModal(null)}>
+          <div className="mb-4 rounded-xl bg-[var(--muted)] p-3.5 text-[13px]">
+            <p className="font-semibold">Liga {hist.monte.lote.liga.nome} · Lote {hist.monte.lote.codigo}</p>
+            <p className="text-[var(--muted-foreground)]">
+              {hist.monte.qtd_barras} barras · {fmtPeso(hist.monte.peso_exibido)}{hist.monte.estimado ? ' (estimado)' : ''}
+            </p>
+            <p className="text-[var(--muted-foreground)]">
+              {ROTULO_STATUS[hist.monte.status] || 'Em estoque'}{hist.monte.setor_reserva ? ` — ${hist.monte.setor_reserva}` : ''}
+            </p>
+          </div>
+          <ol className="relative border-l-2 border-[var(--border)] pl-4">
+            {hist.movimentacoes.map((mv) => {
+              const cor = COR_TIPO[mv.tipo] ?? 'var(--muted-foreground)';
+              return (
+                <li key={mv.id} className="relative mb-5">
+                  <span
+                    className="absolute -left-[calc(1rem+8px+1px)] top-1 grid h-[15px] w-[15px] place-items-center rounded-full"
+                    style={{ background: cor }}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-2 w-2" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  </span>
+                  <p className="text-[14px] font-semibold">{ROTULO_TIPO[mv.tipo] ?? mv.tipo}</p>
+                  <p className="text-[12px] text-[var(--muted-foreground)]">
                     {dataBr(mv.data)} · {mv.usuario}{mv.setor ? ` · ${mv.setor}` : ''}{mv.para_quem ? ` · para ${mv.para_quem}` : ''}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[12px] text-[var(--muted-foreground)]">
                     {mv.qtd_barras != null ? `${mv.qtd_barras} barras` : ''}{mv.peso != null ? ` · ${fmtPeso(mv.peso)}` : ''}
                   </p>
-                  {mv.observacao && <p className="mt-0.5 text-xs">{mv.observacao}</p>}
+                  {mv.observacao && <p className="mt-0.5 text-[12px]">{mv.observacao}</p>}
                 </li>
-              ))}
-              {hist.movimentacoes.length === 0 && <li className="text-xs text-muted-foreground">Sem movimentações.</li>}
-            </ol>
-          </div>
-        </div>
+              );
+            })}
+            {hist.movimentacoes.length === 0 && <li className="text-[13px] text-[var(--muted-foreground)]">Sem movimentações.</li>}
+          </ol>
+        </BottomSheet>
       )}
+
+      <TabBar />
     </div>
   );
 }

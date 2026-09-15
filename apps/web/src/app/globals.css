@@ -1,26 +1,233 @@
 @import "tailwindcss";
 
+/* ============================================================
+   DESIGN TOKENS — estilo iOS (claro + escuro com toggle manual)
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f2f2f7;
+  --foreground: #1c1c1e;
+  --card: #ffffff;
+  --card-elev: #1c1c1e; /* reset no dark */
+  --muted: rgba(120, 120, 128, 0.12);
+  --muted-foreground: #6c6c70;
+  --border: rgba(60, 60, 67, 0.18);
+  --destructive: #ff3b30;
+
+  --tint: #0a84ff;
+  --tint-soft: rgba(10, 132, 255, 0.12);
+  --verde: #30b14e;
+  --verde-soft: rgba(48, 177, 78, 0.14);
+  --laranja: #ff9500;
+  --laranja-soft: rgba(255, 149, 0, 0.16);
+  --roxo: #af52de;
+  --roxo-soft: rgba(175, 82, 222, 0.14);
+  --teal: #30b0c7;
+  --teal-soft: rgba(48, 176, 199, 0.14);
+
+  --sombra-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.07);
+
+  /* cores das ligas */
+  --liga-6: #ffcc00;
+  --liga-5: #ff453a;
+  --liga-0: #48484a;
+  --liga-4: #32d74b;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --muted: rgba(120, 120, 128, 0.24);
+  --muted-foreground: #98989f;
+  --border: rgba(84, 84, 88, 0.55);
+  --destructive: #ff453a;
+
+  --tint-soft: rgba(10, 132, 255, 0.22);
+  --verde-soft: rgba(48, 177, 78, 0.22);
+  --laranja-soft: rgba(255, 159, 10, 0.24);
+  --roxo-soft: rgba(191, 90, 242, 0.22);
+  --teal-soft: rgba(100, 210, 255, 0.2);
+
+  --sombra-card: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-destructive: var(--destructive);
+  --color-tint: var(--tint);
+  --color-tint-soft: var(--tint-soft);
+  --color-verde: var(--verde);
+  --color-laranja: var(--laranja);
+  --color-roxo: var(--roxo);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, var(--font-geist-sans), "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s, color 0.3s;
 }
+
+/* ---------- utilitários iOS ---------- */
+.ios-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--sombra-card);
+}
+.ios-card-flat {
+  background: var(--card);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+}
+
+/* campos agrupados estilo iOS (lista em linhas com divisórias) */
+.ios-group {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: var(--sombra-card);
+  overflow: hidden;
+}
+.ios-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 0.5px solid var(--border);
+}
+.ios-field:last-child {
+  border-bottom: none;
+}
+.ios-field > label:first-child,
+.ios-field > span:first-child {
+  font-size: 15px;
+  flex: 0 0 auto;
+  min-width: 104px;
+  color: var(--foreground);
+  font-weight: 500;
+}
+.ios-field input,
+.ios-field select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 16px;
+  text-align: right;
+}
+.ios-field select {
+  text-align: center;
+  text-align-last: center;
+  appearance: none;
+}
+.ios-field select option {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+}
+.ios-field input::placeholder {
+  color: #aeaeb2;
+  font-weight: 400;
+}
+
+/* stats */
+.ios-stat {
+  background: var(--muted);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+/* botões */
+.ios-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 15px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  transition: transform 0.12s, opacity 0.2s;
+}
+.ios-btn:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+.ios-btn-primario { background: var(--tint); color: #fff; }
+.ios-btn-secundario { background: var(--muted); color: var(--tint); }
+.ios-btn-perigo { background: var(--destructive); color: #fff; }
+
+/* bottom sheet */
+.ios-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+  animation: ios-fade 0.3s ease;
+}
+.ios-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  z-index: 61;
+  background: var(--card);
+  border-radius: 22px 22px 0 0;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: ios-sheet-up 0.35s cubic-bezier(0.2, 1, 0.3, 1);
+}
+@keyframes ios-sheet-up {
+  from { transform: translate(-50%, 100%); }
+  to { transform: translate(-50%, 0); }
+}
+@keyframes ios-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.ios-grabber {
+  width: 38px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(120, 120, 128, 0.32);
+  margin: 9px auto 2px;
+}
+
+/* legenda */
+.ios-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.ios-legend i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3.5px;
+  flex-shrink: 0;
+}
+
