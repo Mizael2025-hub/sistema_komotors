@@ -154,9 +154,18 @@ export default function PaginaEstoqueChumbo() {
   const [arrastando, setArrastando] = useState<number | null>(null);
   const [reorganizando, setReorganizando] = useState(false);
 
+  /* aviso de sucesso é um toast discreto — some sozinho, nunca trava o trabalho */
+  useEffect(() => {
+    if (aviso == null) return;
+    const t = setTimeout(() => setAviso(null), 2800);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
   function alternarReorganizar() {
-    setReorganizando((r) => !r);
-    setArrastando(null);
+    setReorganizando((r) => {
+      if (r) setArrastando(null);
+      return !r;
+    });
   }
 
   const [modal, setModal] = useState<null | 'acoes' | 'historico'>(null);
@@ -199,8 +208,8 @@ export default function PaginaEstoqueChumbo() {
     try {
       const r = await consumir<Estoque>(`/api/lead/stock?liga_id=${id}`);
       setEstoque(r);
-      // todos os lotes começam recolhidos — o usuário expande o que quiser
-      setExpandidos(new Set());
+      // preserva os lotes que o usuário expandiu — a recarga não recolhe nada
+      setExpandidos((prev) => new Set([...prev].filter((x) => r.lotes.some((l) => l.id === x))));
     } catch (ex) {
       setEstoque(null);
       setErro(ex instanceof Error ? ex.message : 'Erro ao carregar estoque.');
@@ -225,6 +234,8 @@ export default function PaginaEstoqueChumbo() {
     setModal(null);
     setAcaoAtiva(null);
     setHist(null);
+    setReorganizando(false);
+    setArrastando(null);
   }
 
   function alternarExpandido(id: number) {
@@ -374,8 +385,8 @@ export default function PaginaEstoqueChumbo() {
     setErro(null);
     try {
       await enviar(`/api/lead/piles/${arrastando}`, { metodo: 'PATCH', corpo: { linha, coluna } });
-      setAviso('Monte reposicionado.');
-      setReorganizando(false);
+      // mantém o modo reorganização ativo — permite mover vários montes sem pausas
+      setArrastando(null);
       if (ligaId != null) await carregarEstoque(ligaId);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao reposicionar.');
