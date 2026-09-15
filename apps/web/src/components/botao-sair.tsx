@@ -22,7 +22,7 @@ export function BotaoSair() {
     <button
       onClick={sair}
       disabled={saindo}
-      className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+      className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--foreground)] transition-transform active:scale-95 disabled:opacity-50"
     >
       {saindo ? 'Saindo…' : 'Sair'}
     </button>
