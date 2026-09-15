@@ -147,7 +147,8 @@ export default function PaginaEntradaChumbo() {
             </div>
             <div className="ios-field">
               <span>Nº do lote</span>
-              <input required value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex.: 0915" />
+              <input required value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/[^\d]/g, ''))}
+                inputMode="numeric" pattern="[0-9]*" placeholder="Ex.: 0915" />
             </div>
             <div className="ios-field">
               <span>Liga</span>

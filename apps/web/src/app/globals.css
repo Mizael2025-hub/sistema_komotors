@@ -81,6 +81,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, var(--font-geist-sans), "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background 0.3s, color 0.3s;
+  overflow-x: clip;
 }
 
 /* ---------- utilitários iOS ---------- */
