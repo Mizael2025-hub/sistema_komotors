@@ -70,6 +70,12 @@ type Historico = {
 
 type ItemLiga = { id: number; nome: string; cor: string };
 
+type ItemResumoLiga = {
+  liga: ItemLiga;
+  resumo: Record<'disponivel' | 'no_setor' | 'reservado' | 'vendido', { peso: number | null; barras: number }>;
+  lotes: number;
+};
+
 const ROTULO_STATUS: Record<StatusMonte, string> = {
   EM_ESTOQUE: '',
   RESERVADO: 'Reservado',
@@ -104,6 +110,9 @@ const COR_TIPO: Record<string, string> = {
 const fmtPeso = (n: number | null | undefined) =>
   n == null ? '—' : `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(n)} kg`;
 
+const fmtTotalPeso = (ns: number[]) =>
+  new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(ns.reduce((s, n) => s + n, 0));
+
 const dataBr = (iso: string) => (!iso ? '—' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
@@ -135,6 +144,7 @@ const ROTULO_ACAO: Record<string, string> = {
 
 export default function PaginaEstoqueChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
+  const [resumoGeral, setResumoGeral] = useState<ItemResumoLiga[] | null>(null);
   const [ligaId, setLigaId] = useState<number | null>(null);
   const [estoque, setEstoque] = useState<Estoque | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -156,7 +166,23 @@ export default function PaginaEstoqueChumbo() {
   const carregarLigas = useCallback(async () => {
     try {
       const r = await consumir<{ itens: { id: number; nome: string; cor: string }[] }>('/api/config/ligas');
-      setLigasItens(r.itens ?? []);
+      const itens = r.itens ?? [];
+      setLigasItens(itens);
+      try {
+        const detalhes = await Promise.all(
+          itens.map(async (l) => {
+            try {
+              const e = await consumir<Estoque>(`/api/lead/stock?liga_id=${l.id}`);
+              return { liga: l, resumo: e.resumo, lotes: e.lotes.length };
+            } catch {
+              return null;
+            }
+          }),
+        );
+        setResumoGeral(detalhes.filter((d): d is ItemResumoLiga => d != null));
+      } catch {
+        setResumoGeral([]);
+      }
     } catch {
       setLigasItens([]);
     }
@@ -167,10 +193,8 @@ export default function PaginaEstoqueChumbo() {
     try {
       const r = await consumir<Estoque>(`/api/lead/stock?liga_id=${id}`);
       setEstoque(r);
-      setExpandidos((prev) => {
-        const validos = [...prev].filter((x) => r.lotes.some((l) => l.id === x));
-        return validos.length ? new Set(validos) : new Set(r.lotes.slice(0, 1).map((l) => l.id));
-      });
+      // todos os lotes começam recolhidos — o usuário expande o que quiser
+      setExpandidos(new Set());
     } catch (ex) {
       setEstoque(null);
       setErro(ex instanceof Error ? ex.message : 'Erro ao carregar estoque.');
@@ -226,7 +250,7 @@ export default function PaginaEstoqueChumbo() {
 
   const montesConhecidos = () => estoque?.lotes.flatMap((l) => l.montes) ?? [];
 
-  function abrirAcoes() {
+  function abrirAcaoDireta(acao: 'reservar' | 'mover-setor' | 'venda' | 'editar') {
     const ids = [...selecionados];
     if (ids.length === 0) return;
     const primeiro = montesConhecidos().find((m) => m.id === ids[0]);
@@ -236,8 +260,15 @@ export default function PaginaEstoqueChumbo() {
       setFormVenda((f) => ({ ...f, qtd_barras: String(primeiro.qtd_barras), peso: pesoTexto }));
       setFormEditar({ peso: pesoTexto, qtd_barras: String(primeiro.qtd_barras) });
     }
-    setAcaoAtiva(ids.some((id) => montesConhecidos().find((m) => m.id === id)?.status === 'RESERVADO') ? 'mover-setor' : 'reservar');
+    setAcaoAtiva(acao);
     setModal('acoes');
+  }
+
+  function abrirAcoes() {
+    const ids = [...selecionados];
+    if (ids.length === 0) return;
+    const auto = ids.some((id) => montesConhecidos().find((m) => m.id === id)?.status === 'RESERVADO') ? 'mover-setor' : 'reservar';
+    abrirAcaoDireta(auto);
   }
 
   async function abrirHistorico(monteId: number) {
@@ -354,6 +385,17 @@ export default function PaginaEstoqueChumbo() {
 
       <main className="mx-auto w-full max-w-3xl px-4 pb-28 pt-4">
         <div className="mb-3 flex gap-2.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none' }}>
+          <button
+            onClick={() => { setLigaId(null); setEstoque(null); setSelecionados(new Set()); setModal(null); setAcaoAtiva(null); setHist(null); }}
+            aria-pressed={ligaId == null}
+            className={`flex shrink-0 items-center gap-2 rounded-full border-[1.5px] px-4 py-2 text-[13.5px] transition-all active:scale-95 ${
+              ligaId == null
+                ? 'border-[var(--tint)] bg-[var(--tint-soft)] font-semibold text-[var(--tint)]'
+                : 'ios-card-flat font-medium'
+            }`}
+          >
+            Todas
+          </button>
           {(ligasItens ?? []).map((l) => (
             <button
               key={l.id}
@@ -370,6 +412,55 @@ export default function PaginaEstoqueChumbo() {
             </button>
           ))}
         </div>
+
+        {(resumoGeral != null && ligaId == null) && (
+          <>
+            <div className="ios-card mb-4 p-4">
+              <p className="mb-3 text-[14px] font-bold">Visão geral das ligas</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="ios-stat">
+                  <p className="text-[19px] font-extrabold tracking-tight" style={{ color: 'var(--verde)' }}>
+                    {fmtTotalPeso(resumoGeral.map((r) => r.resumo.disponivel.peso ?? 0))}
+                  </p>
+                  <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">kg disponível · {resumoGeral.reduce((s, r) => s + r.resumo.disponivel.barras, 0)} barras</p>
+                </div>
+                <div className="ios-stat">
+                  <p className="text-[19px] font-extrabold tracking-tight" style={{ color: 'var(--tint)' }}>
+                    {resumoGeral.reduce((s, r) => s + r.lotes, 0)}
+                  </p>
+                  <p className="text-[11px] font-semibold text-[var(--muted-foreground)]">lotes ativos</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="ios-card overflow-hidden">
+              {resumoGeral.length === 0 && (
+                <p className="px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">Nenhuma liga com estoque.</p>
+              )}
+              {resumoGeral.map((r, i) => (
+                <button
+                  key={r.liga.id}
+                  onClick={() => trocarLiga(r.liga.id)}
+                  className={`flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-[var(--muted)] ${i > 0 ? 'border-t border-[var(--border)]' : ''}`}
+                >
+                  <span
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[12px] font-extrabold"
+                    style={{ backgroundColor: COR_LIGA_HEX[(r.liga.cor as CorLiga) ?? 'CINZA'], color: (r.liga.cor as CorLiga) === 'AMARELO' ? '#1c1c1e' : '#fff' }}
+                  >
+                    {[...r.liga.nome].find((c) => /[0-9]/.test(c)) ?? 'L'}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <b className="block text-[15px]">{r.liga.nome}</b>
+                    <span className="block truncate text-[12px] text-[var(--muted-foreground)]">
+                      {fmtPeso(r.resumo.disponivel.peso)} disponível · {r.resumo.disponivel.barras} barras · {r.lotes} lote(s)
+                    </span>
+                  </span>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="#aeaeb2" strokeWidth="2.4" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {ligasItens != null && ligasItens.length === 0 && (
           <p className="text-sm text-[var(--muted-foreground)]">
@@ -522,7 +613,7 @@ export default function PaginaEstoqueChumbo() {
                     return (
                       <button
                         key={a}
-                        onClick={() => { setAcaoAtiva(a as 'reservar'); abrirAcoes(); }}
+                        onClick={() => abrirAcaoDireta(a as 'reservar' | 'mover-setor' | 'venda' | 'editar')}
                         className="flex flex-col items-center gap-1 rounded-xl bg-[var(--muted)] py-2.5 text-[11px] font-bold active:scale-95"
                         style={{ color: cor }}
                       >
@@ -550,16 +641,6 @@ export default function PaginaEstoqueChumbo() {
               <p className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs text-[var(--background)] font-semibold">Aplicando operação…</p>
             </div>
           )}
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-            {(['reservar', 'mover-setor', 'venda', 'editar'] as const).map((a) => (
-              <button key={a} onClick={() => setAcaoAtiva(a)}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
-                  acaoAtiva === a ? 'bg-[var(--foreground)] text-[var(--background)]' : 'bg-[var(--muted)] text-[var(--muted-foreground)]'
-                }`}>
-                {ROTULO_ACAO[a]}
-              </button>
-            ))}
-          </div>
 
           {acaoAtiva === 'reservar' && (
             <div className="ios-group">
