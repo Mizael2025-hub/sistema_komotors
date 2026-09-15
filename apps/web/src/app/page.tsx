@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import { obterSessao } from '@/lib/auth/sessao';
 import { BotaoSair } from '@/components/botao-sair';
 import { ToggleTema, TabBar } from '@/components/ui';
+import pkg from '../../package.json';
+
+const VERSAO = (pkg as { version: string }).version;
 
 type ItemMenu = {
   href: string;
@@ -85,6 +88,8 @@ export default async function PaginaPrincipal() {
             </div>
           ))}
         </div>
+
+        <p className="pt-6 pb-2 text-center text-[11px] font-semibold tracking-wide text-[var(--muted-foreground)]">v{VERSAO}</p>
       </main>
 
       <TabBar />

@@ -203,10 +203,12 @@ export default function PaginaEntradaChumbo() {
                   >
                     {preenchida ? (
                       <span className="flex flex-col items-center justify-center gap-0.5">
-                        <span className="text-[15px] font-extrabold tracking-tight">
-                          {m.peso != null ? `${fmt(m.peso)}k` : `${m.qtd_barras}b`}
-                        </span>
-                        <span className="text-[10.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>
+                        {m.peso != null ? (
+                          <span className="text-[13.5px] font-extrabold tracking-tight whitespace-nowrap">{fmt(m.peso)}<span className="text-[9px] font-bold text-[var(--muted-foreground)]">kg</span></span>
+                        ) : (
+                          <span className="text-[13.5px] font-extrabold whitespace-nowrap">{m.qtd_barras} barras</span>
+                        )}
+                        {m.peso != null && <span className="text-[10.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>}
                       </span>
                     ) : (
                       <span className="text-[10px] font-semibold text-[var(--muted-foreground)]">{l}.{c}</span>
