@@ -152,6 +152,12 @@ export default function PaginaEstoqueChumbo() {
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
   const [arrastando, setArrastando] = useState<number | null>(null);
+  const [reorganizando, setReorganizando] = useState(false);
+
+  function alternarReorganizar() {
+    setReorganizando((r) => !r);
+    setArrastando(null);
+  }
 
   const [modal, setModal] = useState<null | 'acoes' | 'historico'>(null);
   const [acaoAtiva, setAcaoAtiva] = useState<'reservar' | 'mover-setor' | 'venda' | 'editar' | null>(null);
@@ -256,12 +262,35 @@ export default function PaginaEstoqueChumbo() {
     const primeiro = montesConhecidos().find((m) => m.id === ids[0]);
     if (primeiro) {
       const pesoTexto = primeiro.peso_exibido != null ? String(primeiro.peso_exibido) : '';
-      setFormMover((f) => ({ ...f, qtd_barras: String(primeiro.qtd_barras), peso: pesoTexto }));
-      setFormVenda((f) => ({ ...f, qtd_barras: String(primeiro.qtd_barras), peso: pesoTexto }));
+      setFormMover((f) => ({
+        ...f,
+        setor_id: primeiro.setor_reserva_id != null ? String(primeiro.setor_reserva_id) : f.setor_id,
+        qtd_barras: String(primeiro.qtd_barras),
+        peso: pesoTexto,
+      }));
+      setFormVenda((f) => ({
+        ...f,
+        qtd_barras: String(primeiro.qtd_barras),
+        peso: pesoTexto,
+        pesoEditado: false,
+      }));
       setFormEditar({ peso: pesoTexto, qtd_barras: String(primeiro.qtd_barras) });
     }
     setAcaoAtiva(acao);
     setModal('acoes');
+  }
+
+  /* peso pela média do monte: peso_monte / barras_monte × barras_movidas */
+  function barrasChange(tipo: 'mover' | 'venda', valor: string) {
+    const primeiro = montesConhecidos().find((m) => m.id === [...selecionados][0]);
+    const n = parseInt(valor, 10);
+    const media =
+      primeiro && primeiro.qtd_barras > 0 && primeiro.peso_exibido != null && n > 0
+        ? Math.round(((primeiro.peso_exibido / primeiro.qtd_barras) * n) * 100) / 100
+        : null;
+    const pesoTexto = media != null ? String(media) : '';
+    if (tipo === 'mover') setFormMover((f) => ({ ...f, qtd_barras: valor, peso: pesoTexto }));
+    else setFormVenda((f) => ({ ...f, qtd_barras: valor, peso: pesoTexto, pesoEditado: false }));
   }
 
   function abrirAcoes() {
@@ -313,9 +342,6 @@ export default function PaginaEstoqueChumbo() {
             observacao: formMover.observacao || undefined,
           };
         } else {
-          const monteAlvo = montesConhecidos().find((m) => m.id === [...selecionados][0]);
-          const pesoOriginal = monteAlvo?.peso_exibido != null ? String(monteAlvo.peso_exibido) : '';
-          const editado = formVenda.peso !== '' && formVenda.peso !== pesoOriginal;
           dados = {
             monte_ids: [...selecionados],
             destino: formVenda.destino,
@@ -323,7 +349,7 @@ export default function PaginaEstoqueChumbo() {
             data: formVenda.data,
             qtd_barras: formVenda.qtd_barras === '' ? undefined : Number(formVenda.qtd_barras),
             peso_informado: formVenda.peso === '' ? undefined : Number(formVenda.peso),
-            peso_editado: editado,
+            peso_editado: formVenda.pesoEditado,
             observacao: formVenda.observacao || undefined,
           };
         }
@@ -349,6 +375,7 @@ export default function PaginaEstoqueChumbo() {
     try {
       await enviar(`/api/lead/piles/${arrastando}`, { metodo: 'PATCH', corpo: { linha, coluna } });
       setAviso('Monte reposicionado.');
+      setReorganizando(false);
       if (ligaId != null) await carregarEstoque(ligaId);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao reposicionar.');
@@ -543,10 +570,17 @@ export default function PaginaEstoqueChumbo() {
                               return (
                                 <button
                                   key={`vazia-${indice}`}
-                                  onClick={() => setSelecionados(new Set())}
+                                  onClick={() => {
+                                    if (reorganizando && arrastando != null) dragSolto(l.id, linha02, coluna02, l.linhas, l.colunas);
+                                    else setSelecionados(new Set());
+                                  }}
                                   onDragOver={(e) => { if (arrastando != null) e.preventDefault(); }}
                                   onDrop={() => dragSolto(l.id, linha02, coluna02, l.linhas, l.colunas)}
-                                  className="grid h-[4.25rem] place-items-center rounded-xl border-2 border-dashed border-[var(--border)] text-[10px] text-[var(--muted-foreground)]"
+                                  className={`grid h-[4.25rem] place-items-center rounded-xl border-2 border-dashed text-[10px] transition-all ${
+                                    reorganizando && arrastando != null
+                                      ? 'border-[var(--tint)] bg-[var(--tint-soft)] text-[var(--tint)] font-bold'
+                                      : 'border-[var(--border)] text-[var(--muted-foreground)]'
+                                  }`}
                                 >
                                   {arrastando != null ? '↦' : ''}
                                 </button>
@@ -555,12 +589,20 @@ export default function PaginaEstoqueChumbo() {
                             return (
                               <button
                                 key={m.id}
-                                onClick={() => alternarSelecao(m)}
+                                onClick={() => {
+                                  if (reorganizando) {
+                                    if (arrastando == null) setArrastando(m.id);
+                                    else setAviso('Escolha uma posição vazia como destino — toque novamente em Reorganizar para sair.');
+                                  } else alternarSelecao(m);
+                                }}
                                 onDoubleClick={() => (m.status === 'VENDIDO' || m.status === 'AJUSTADO' ? abrirHistorico(m.id) : abrirAcoes())}
                                 draggable={m.status !== 'VENDIDO' && m.status !== 'AJUSTADO'}
                                 onDragStart={() => setArrastando(m.id)}
-                                className={`relative flex h-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-xl text-center leading-tight shadow-sm transition-transform active:scale-95 ${classeMonte(m, selecionados.has(m.id))}`}
+                                className={`relative flex h-[4.25rem] flex-col items-center justify-center gap-0.5 rounded-xl text-center leading-tight shadow-sm transition-transform active:scale-95 ${classeMonte(m, reorganizando ? false : selecionados.has(m.id))}`}
                               >
+                                {reorganizando && arrastando == m.id && (
+                                  <span className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--laranja)] text-[10px] font-bold text-white shadow">↦</span>
+                                )}
                                 {m.peso_exibido != null ? (
                                   <span className="text-[14px] font-extrabold tracking-tight">{fmtPeso(m.peso_exibido).replace(' kg', '')}<span className="text-[9px] font-bold text-[var(--muted-foreground)]">kg</span></span>
                                 ) : (
@@ -576,6 +618,21 @@ export default function PaginaEstoqueChumbo() {
                           });
                         })()}
                       </div>
+
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <button onClick={alternarReorganizar}
+                          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
+                            reorganizando ? 'bg-[var(--laranja)] text-white' : 'bg-[var(--muted)] text-[var(--tint)]'
+                          }`}>
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8h11l-3-3M21 16H10l3 3" /></svg>
+                          {reorganizando ? 'Concluir' : 'Reorganizar'}
+                        </button>
+                      </div>
+                      {reorganizando && (
+                        <p className="mt-2 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background: 'var(--laranja-soft)', color: 'var(--laranja)' }}>
+                          Modo reorganização: toque no monte de origem (↦) e depois numa posição vazia.
+                        </p>
+                      )}
 
                       <div className="ios-legend mt-3">
                         <div><i style={{ border: '2px solid var(--tint)', opacity: 0.5 }} />Em estoque</div>
@@ -670,7 +727,7 @@ export default function PaginaEstoqueChumbo() {
               <label className="ios-field">
                 <span>Barras</span>
                 <input type="number" min={1} inputMode="numeric" value={formMover.qtd_barras}
-                  onChange={(e) => setFormMover({ ...formMover, qtd_barras: e.target.value })} placeholder="Vazio = monte todo" />
+                  onChange={(e) => barrasChange('mover', e.target.value)} placeholder="Vazio = monte todo" />
               </label>
               <label className="ios-field">
                 <span>Peso (kg)</span>
@@ -701,12 +758,12 @@ export default function PaginaEstoqueChumbo() {
               <label className="ios-field">
                 <span>Barras</span>
                 <input type="number" min={1} inputMode="numeric" value={formVenda.qtd_barras}
-                  onChange={(e) => setFormVenda({ ...formVenda, qtd_barras: e.target.value })} placeholder="Vazio = tudo" />
+                  onChange={(e) => barrasChange('venda', e.target.value)} placeholder="Vazio = tudo" />
               </label>
               <label className="ios-field">
                 <span>Peso (kg)</span>
                 <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formVenda.peso}
-                  onChange={(e) => setFormVenda({ ...formVenda, peso: e.target.value })} placeholder="Aut. pela média" />
+                  onChange={(e) => setFormVenda({ ...formVenda, peso: e.target.value, pesoEditado: true })} placeholder="Aut. pela média — editável" />
               </label>
               <label className="ios-field">
                 <span>Observação</span>
