@@ -89,6 +89,38 @@ export const redimensionarGradeSchema = z.object({
   colunas: z.number().int().min(1).max(20),
 });
 
+export const apontamentoContagemSchema = z.object({
+  data: z.string().regex(DATA_ISO, 'Informe uma data valida'),
+  liga_id: z.number().int().positive('Escolha a liga de chumbo'),
+  qtd_barras: z.number().int('Quantidade de barras deve ser numero inteiro').positive('Informe a quantidade de barras'),
+  lote_id: z.number().int().positive().optional(),
+  observacao: z.string().trim().max(200, 'Observacao com no maximo 200 caracteres').optional().transform((v) => (v ? v : undefined)),
+});
+
+export const edicaoApontamentoSchema = z
+  .object({
+    apontamento_id: z.number().int().positive(),
+    qtd_barras: z.number().int('Quantidade de barras deve ser numero inteiro').positive('Informe a quantidade de barras').optional(),
+    lote_id: z.number().int().positive().nullable().optional(),
+    observacao: z.string().trim().max(200, 'Observacao com no maximo 200 caracteres').nullable().optional(),
+  })
+  .refine((d) => d.qtd_barras !== undefined || d.lote_id !== undefined || d.observacao !== undefined, {
+    message: 'Informe ao menos um campo para editar',
+  });
+
+export const excluirApontamentoSchema = z.object({
+  apontamento_id: z.number().int().positive(),
+});
+
+export const revisarContagemSchema = z.object({
+  data: z.string().regex(DATA_ISO, 'Informe uma data valida'),
+});
+
+export type ApontamentoContagemInput = z.infer<typeof apontamentoContagemSchema>;
+export type EdicaoApontamentoInput = z.infer<typeof edicaoApontamentoSchema>;
+export type ExcluirApontamentoInput = z.infer<typeof excluirApontamentoSchema>;
+export type RevisarContagemInput = z.infer<typeof revisarContagemSchema>;
+
 export type EntradaLoteInput = z.infer<typeof entradaLoteSchema>;
 export type ReservaInput = z.infer<typeof reservaSchema>;
 export type CancelarReservaInput = z.infer<typeof cancelarReservaSchema>;

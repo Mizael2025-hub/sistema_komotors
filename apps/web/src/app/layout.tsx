@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -25,19 +26,16 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-/* aplica o tema salvo antes da hidratação para evitar flash */
-const scriptTema = `try{var t=localStorage.getItem('tema');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}`;
-
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const loja = await cookies();
+  const tema = loja.get("tema")?.value === "dark" ? "dark" : "light";
+
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: scriptTema }} />
-      </head>
+    <html lang="pt-BR" data-theme={tema} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
     </html>
   );

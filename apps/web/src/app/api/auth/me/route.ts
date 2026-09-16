@@ -1,10 +1,10 @@
 import { exigirSessao } from '@/lib/auth/sessao';
-import { ERROS } from '@/lib/api/erros';
+import { respostaJson, ERROS } from '@/lib/api/erros';
 
 export async function GET() {
   const sessao = await exigirSessao();
   if (!sessao) return ERROS.naoAutenticado();
-  return Response.json({
+  return respostaJson({
     usuario: {
       id: sessao.usuario_id,
       email: sessao.email,

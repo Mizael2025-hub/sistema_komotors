@@ -1,6 +1,6 @@
 import { atualizar, alterarAtivo, type DadosEntrada } from '@/lib/configuracoes/servico';
 import { lerCorpo, validaCrud, autorizarAdmin, SCHEMAS, type CrudValido } from '@/lib/configuracoes/rotas';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ crud: string; id: string }> }) {
   const { crud, id: idTexto } = await params;
@@ -19,7 +19,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ cr
     if (typeof corpo.ativo !== 'boolean') return erro(400, 'Valor "ativo" invalido.');
     const resultado = await alterarAtivo(crud as CrudValido, id, corpo.ativo, sessao);
     if (resultado instanceof Response) return resultado;
-    return Response.json({ item: resultado });
+    return respostaJson({ item: resultado });
   }
 
   const parsed = SCHEMAS[crud as CrudValido].safeParse(corpo);
@@ -29,5 +29,5 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ cr
 
   const resultado = await atualizar(crud as CrudValido, id, parsed.data as DadosEntrada, sessao);
   if (resultado instanceof Response) return resultado;
-  return Response.json({ item: resultado });
+  return respostaJson({ item: resultado });
 }

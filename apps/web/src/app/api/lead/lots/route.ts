@@ -1,6 +1,6 @@
 import { entradaLoteSchema } from '@komotors/shared';
 import { exigirSessao } from '@/lib/auth/sessao';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 import { criarEntrada, RegraError } from '@/lib/chumbo/servico';
 import { registrarAuditoria } from '@/lib/auditoria';
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       dados_novos: { codigo: lote.codigo, total_barras: lote.total_barras, total_montes: lote.total_montes, liga_id: lote.liga_id, data_chegada: lote.data_chegada },
       usuario_id: sessao.usuario_id,
     });
-    return Response.json({ lote: { id: lote.id, codigo: lote.codigo } }, { status: 201 });
+    return respostaJson({ lote: { id: lote.id, codigo: lote.codigo } }, { status: 201 });
   } catch (ex) {
     if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
     return ERROS.erroInterno(ex);

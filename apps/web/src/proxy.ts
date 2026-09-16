@@ -1,10 +1,19 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { verificarAccessToken } from '@/lib/auth/jwt';
 
 const COOKIE_ACCESS = 'komotors_access';
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const logado = Boolean(request.cookies.get(COOKIE_ACCESS)?.value);
+  const token = request.cookies.get(COOKIE_ACCESS)?.value;
+  let logado = false;
+  if (token) {
+    try {
+      logado = (await verificarAccessToken(token)) !== null;
+    } catch {
+      logado = false;
+    }
+  }
 
   if (pathname === '/login' && logado) {
     return NextResponse.redirect(new URL('/', request.url));

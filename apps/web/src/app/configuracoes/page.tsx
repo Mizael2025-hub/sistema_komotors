@@ -133,7 +133,7 @@ export default function PaginaConfiguracoes() {
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-5 py-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between">
-          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground">← Menu</Link>
+          <Link href="/menu" className="text-sm text-muted-foreground hover:text-foreground">← Menu</Link>
           <span className="text-sm font-semibold">Configurações</span>
         </div>
       </header>

@@ -1147,12 +1147,12 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [x] Criar `packages/shared` com schemas Zod, enums e constantes de domínio.
 - [x] Criar `.env.example`, `.gitignore`, `PROJECT_MAP.md`. *(docs/ com MKDocs pendente.)*
 
-### Sprint 2 — Docker Local *(substituída pela adaptação — deploy direto na Vercel)*
+### Sprint 2 — Docker Local *(substituída pela adaptação — deploy direto na Vercel)* ✅
 
-- [ ] ~~Dockerfiles multi-stage~~ → desnecessário na Vercel (build nativo). Reaproveitável se migrar para VPS.
-- [ ] ~~docker-compose.yml~~ → substituído por `pnpm dev` local + Supabase remoto.
-- [ ] ~~entrypoints~~ → não aplicável.
-- [ ] Equivalente cumprido: ambiente local funcional (build + smoke test) e CI/CD por push.
+- [x] ~~Dockerfiles multi-stage~~ → desnecessário na Vercel (build nativo). Reaproveitável se migrar para VPS.
+- [x] ~~docker-compose.yml~~ → substituído por `pnpm dev` local + Supabase remoto.
+- [x] ~~entrypoints~~ → não aplicável.
+- [x] Equivalente cumprido: ambiente local funcional (`rodar-local.bat`: prisma generate/migrate/seed + dev) e CI/CD por push.
 
 ### Sprint 3 — API Base *(adaptada: route handlers Next.js em vez de NestJS)* ✅
 
@@ -1172,7 +1172,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [x] Login por email (JWT access + refresh com **rotação e revogação no banco**; argon2id via `@node-rs/argon2`).
 - [x] Guards por rota e perfil (`exigirSessao`/`exigirAdmin` em todos os writes; ADMIN/OPERADOR desde o dia 1).
 - [ ] Alteração de senha; recuperação por email (SMTP opcional) e via comando CLI. *(schema pronto, endpoint pendente.)*
-- [x] Frontend: página de login, proteção de rotas via `proxy.ts`, cookies httpOnly. *(Renovação silenciosa automática do access token pendente — hoje o cliente renova via /api/auth/refresh.)*
+- [x] Frontend: página de login, proteção de rotas via `proxy.ts`, cookies httpOnly. Renovação silenciosa automática: o cliente tenta `/api/auth/refresh` uma vez em qualquer 401 de rota de aplicação antes de cair no login.
 
 ### Sprint 6 — Auditoria Transversal ✅ *(parcial)*
 
@@ -1188,8 +1188,8 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 ### Sprint 8 — Frontend Base do Sistema *(parcial)*
 
-- [x] Layout responsivo mobile-first. *(Menu lateral desktop/drawer mobile pendente — hoje header simples por tela.)*
-- [ ] TanStack Query — hoje fetch wrapper próprio (`@/lib/api/cliente`) com tratamento de 401. *(Migração pendente.)*
+- [x] Layout responsivo mobile-first com TabBar inferior fixa de 5 posições (FAB central de ações rápidas) + alternador de tema manual via cookie. Landing do usuário autenticado = `/dashboard` (Menu principal em `/menu`). *(Menu/drawer desktop pendente — hoje header simples por tela.)*
+- [ ] TanStack Query — hoje fetch wrapper próprio (`@/lib/api/cliente`) com tratamento de 401 e refresh silencioso. *(Migração pendente.)*
 - [ ] Padrões RHF + zodResolver, datepicker pt-BR, teclado numérico. *(inputs nativos type=date/number com inputMode.)*
 
 ### Sprint 9 — Controle de Chumbo: Entrada ✅
@@ -1218,10 +1218,10 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [x] Ajuste residual auditável quando todos pesados (RF-P05/P06) — movimentação AJUSTE.
 - [x] Movimentações de sistema (RECONCILIACAO/AJUSTE) gravadas com usuário nulo ("Sistema"). *(Exibição na timeline do lote pendente.)*
 
-### Sprint 13 — Contagem Diária
+### Sprint 13 — Contagem Diária ✅
 
-- [ ] Backend: apontamentos por dia/usuário, totais por liga, revisão comparativa (estoque + setores) com persistência da divergência.
-- [ ] Frontend: tela de contagem (data pré-preenchida, botões de liga, teclado numérico), card de totais com "Revisar", histórico do dia.
+- [x] Backend: apontamentos por dia/usuário, totais por liga, revisão comparativa (estoque + setores) com persistência da divergência.
+- [x] Frontend: tela de contagem (data pré-preenchida, botões de liga, teclado numérico), card de totais com "Revisar", histórico do dia.
 
 ### Sprint 14 — PWA Offline-First
 
@@ -1232,20 +1232,20 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [ ] Concorrência otimista (409 + estado atual) e lista de conflitos para revisão manual.
 - [ ] Teste real no celular em modo avião (entrada, movimentação, contagem) e reconexão.
 
-### Sprint 15 — Dashboard do Chumbo
+### Sprint 15 — Dashboard do Chumbo ✅
 
-- [ ] Endpoints de agregação (saldos, entradas×saídas, por setor, aging, estimado vs. real, divergências).
-- [ ] Frontend: cards de métricas + gráficos Recharts + filtros de período/liga/lote/setor.
+- [x] Endpoints de agregação (saldos, entradas×saídas, por setor, aging, estimado vs. real, divergências).
+- [x] Frontend: cards de métricas + gráficos Recharts + filtros de período/liga/lote/setor.
 
-### Sprint 16 — Relatórios
+### Sprint 16 — Relatórios ✅ *(parcial)*
 
-- [ ] XLSX (exceljs) e PDF (pdfmake, fontes PT-BR): movimentações, saldo, contagens/divergências, baixas/vendas.
-- [ ] Tela de relatórios com filtros; jobs BullMQ para relatórios pesados com loading + notificação + download.
+- [x] XLSX (exceljs) e PDF (pdfmake, fontes PT-BR): movimentações, saldo, contagens/divergências, baixas/vendas.
+- [x] Tela de relatórios com filtros; download imediato com loading + notificação interna. *(Relatórios pesados em fila assíncrona pendência — volume do Módulo 1 hoje é baixo e a geração é síncrona.)*
 
-### Sprint 17 — Notificações Internas
+### Sprint 17 — Notificações Internas ✅
 
-- [ ] Model e endpoints de notificação (listar, marcar lida, link direto).
-- [ ] Disparo ao concluir jobs (relatórios) e ao finalizar sincronização; sininho + toast no frontend.
+- [x] Model e endpoints de notificação (listar, marcar lida, link direto).
+- [x] Disparo ao concluir relatórios; sino com badge + lista em bottom sheet no frontend. *(Disparo de sincronização offline entra na Sprint 14 PWA.)*
 
 ### Sprint 18 — Deploy no Servidor Local (Swarm)
 

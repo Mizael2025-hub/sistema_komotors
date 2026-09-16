@@ -1,10 +1,11 @@
+import { respostaJson } from '@/lib/api/erros';
 import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return Response.json({ status: 'ok', banco: 'conectado' });
+    return respostaJson({ status: 'ok', banco: 'conectado' });
   } catch {
-    return Response.json({ status: 'erro', banco: 'indisponivel' }, { status: 503 });
+    return respostaJson({ status: 'erro', banco: 'indisponivel' }, { status: 503 });
   }
 }
