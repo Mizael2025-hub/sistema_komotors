@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { baixaVendaSchema, cancelarReservaSchema, moverSetorSchema, reservaSchema, type BaixaVendaInput, type CancelarReservaInput, type MoverSetorInput, type ReservaInput } from '@komotors/shared';
 import { exigirSessao } from '@/lib/auth/sessao';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 import {
   aplicarBaixaVenda,
   cancelarReserva,
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     else if (acao === 'cancelar-reserva') resultado = await cancelarReserva(parsed.data as CancelarReservaInput, sessao);
     else if (acao === 'mover-setor') resultado = await moverSetorMontes(parsed.data as MoverSetorInput, sessao);
     else resultado = await aplicarBaixaVenda(parsed.data as BaixaVendaInput, sessao);
-    return Response.json(resultado);
+    return respostaJson(resultado);
   } catch (ex) {
     if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
     return ERROS.erroInterno(ex);

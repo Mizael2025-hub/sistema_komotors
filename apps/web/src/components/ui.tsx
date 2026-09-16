@@ -1,6 +1,8 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 /* ---------- Bottom sheet estilo iOS ---------- */
 export function BottomSheet({
@@ -29,39 +31,75 @@ export function BottomSheet({
   );
 }
 
-/* ---------- Tabs inferiores estilo iOS ---------- */
-const TABS = [
-  { href: '/chumbo/estoque', label: 'Estoque', d: 'M3 7l9-4 9 4-9 4zM3 12l9 4 9-4M3 17l9 4 9-4' },
-  { href: '/chumbo/entrada', label: 'Entrada', d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' },
-  { href: '/', label: 'Menu', d: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z' },
-] as const;
-
+/* ---------- Tabs inferiores estilo iOS: 5 posições + FAB central ---------- */
 export function TabBar() {
-  const ok = typeof window !== 'undefined';
-  const [rota, setRota] = useState('');
+  const pathname = usePathname();
+  const [menuAcoes, setMenuAcoes] = useState(false);
 
-  useEffect(() => {
-    setRota(window.location.pathname.replace(/\/$/, ''));
-  }, []);
+  const rota = pathname.replace(/\/$/, '');
 
-  if (!ok) return null;
+  const aba = (href: string, label: string, d: string) => {
+    const ativa = rota === href;
+    return (
+      <Link href={href} className={`flex flex-col items-center gap-0.5 pb-1 text-[10.5px] transition-colors ${ativa ? 'text-[var(--tint)] font-semibold' : 'text-[var(--muted-foreground)]'}`}>
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d={d} />
+        </svg>
+        {label}
+      </Link>
+    );
+  };
 
   return (
-    <nav
-      className="fixed bottom-0 left-1/2 z-40 flex w-full max-w-3xl -translate-x-1/2 justify-around border-t border-[var(--border)] bg-background/85 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur"
-    >
-      {TABS.map((t) => {
-        const ativa = rota === t.href;
-        return (
-          <a key={t.href} href={t.href} className={`flex flex-1 flex-col items-center gap-0.5 pb-1 text-[10.5px] transition-colors ${ativa ? 'text-[var(--tint)] font-semibold' : 'text-[var(--muted-foreground)]'}`}>
-            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d={t.d} />
-            </svg>
-            {t.label}
-          </a>
-        );
-      })}
-    </nav>
+    <>
+      <nav
+        className="fixed bottom-0 left-1/2 z-40 grid w-full max-w-3xl -translate-x-1/2 grid-cols-5 items-end justify-items-center border-t border-[var(--border)] bg-background/85 px-2 pt-2.5 backdrop-blur pb-[max(env(safe-area-inset-bottom),8px)]"
+      >
+        {/* 1. Dashboard */}
+        {aba('/dashboard', 'Dashboard', 'M4 19h16M4 19V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14M10 11h4a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1zM18 8v11')}
+
+        {/* 2. Estoque */}
+        {aba('/chumbo/estoque', 'Estoque', 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8')}
+
+        {/* 3. FAB central de ação acelerada */}
+        <button
+          onClick={() => setMenuAcoes(true)}
+          aria-label="Ações rápidas"
+          className="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--tint)] text-white shadow-lg transition-transform active:scale-90"
+        >
+          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+
+        {/* 4. posição reservada (estrutura de 5 colunas) */}
+        <span aria-hidden="true" />
+
+        {/* 5. Configurações */}
+        {aba('/configuracoes', 'Config.', 'M12 15.5a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z')}
+      </nav>
+
+      {menuAcoes && (
+        <BottomSheet titulo="Ações rápidas" onClose={() => setMenuAcoes(false)}>
+          <div className="grid gap-2.5">
+            <Link href="/chumbo/entrada" className="ios-card-flat flex items-center gap-3 p-4 active:scale-[0.98] transition-transform">
+              <svg viewBox="0 0 24 24" className="h-[26px] w-[26px]" fill="none" stroke="var(--tint)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+              <span className="text-[15px] font-semibold">Entrada de Chumbo</span>
+              <span className="ml-auto text-[var(--muted-foreground)]">›</span>
+            </Link>
+            <Link href="/chumbo/contagem" className="ios-card-flat flex items-center gap-3 p-4 active:scale-[0.98] transition-transform">
+              <svg viewBox="0 0 24 24" className="h-[26px] w-[26px]" fill="none" stroke="var(--tint)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 11l3 3 8-8M21 12a9 9 0 1 1-3-6.7L21 7" />
+              </svg>
+              <span className="text-[15px] font-semibold">Contagem</span>
+              <span className="ml-auto text-[var(--muted-foreground)]">›</span>
+            </Link>
+          </div>
+        </BottomSheet>
+      )}
+    </>
   );
 }
 
@@ -70,6 +108,7 @@ export function ToggleTema() {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza com atributo externo (DOM) no mount
     setDark(document.documentElement.dataset.theme === 'dark');
   }, []);
 
@@ -77,6 +116,8 @@ export function ToggleTema() {
     const novo = !dark;
     setDark(novo);
     document.documentElement.dataset.theme = novo ? 'dark' : 'light';
+    // cookie é lido pelo servidor na próxima renderização (sem flash e sem script inline)
+    document.cookie = `tema=${novo ? 'dark' : 'light'}; path=/; max-age=31536000; SameSite=Lax`;
     try {
       localStorage.setItem('tema', novo ? 'dark' : 'light');
     } catch {}

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { COR_LIGA_HEX, type CorLiga, type StatusMonte } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
 import { BottomSheet, TabBar, ToggleTema } from '@/components/ui';
+import { SinoNotificacoes } from '@/components/sino'
+
 
 type Monte = {
   id: number;
@@ -414,8 +416,9 @@ export default function PaginaEstoqueChumbo() {
           <p className="text-[12px] text-[var(--muted-foreground)]">Chumbo · {estoque?.liga.nome ?? 'escolha a liga'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <SinoNotificacoes />
           <ToggleTema />
-          <Link href="/" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
+          <Link href="/menu" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
             Menu
           </Link>
         </div>
@@ -706,7 +709,7 @@ export default function PaginaEstoqueChumbo() {
         <BottomSheet titulo={`Ações — ${selecionados.size} monte(s)`} onClose={() => setModal(null)}>
           {enviando && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-              <p className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs text-[var(--background)] font-semibold">Aplicando operação…</p>
+              <p className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs text-[var(--background)] font-semibold">Aplicando operação⬦</p>
             </div>
           )}
 

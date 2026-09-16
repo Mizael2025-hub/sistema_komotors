@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { enviar, consumir } from '@/lib/api/cliente';
 import { BottomSheet, TabBar, ToggleTema } from '@/components/ui';
+import { SinoNotificacoes } from '@/components/sino'
+
 
 type ItemLiga = { id: number; nome: string; cor: string; ativo: boolean };
 type Montes = Record<string, { qtd_barras: number; peso?: number; ordem?: number }>;
@@ -131,6 +133,7 @@ export default function PaginaEntradaChumbo() {
           <p className="text-[12px] text-[var(--muted-foreground)]">Apontamento de remessa</p>
         </div>
         <div className="flex items-center gap-2">
+          <SinoNotificacoes />
           <ToggleTema />
           <Link href="/chumbo/estoque" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
             Estoque

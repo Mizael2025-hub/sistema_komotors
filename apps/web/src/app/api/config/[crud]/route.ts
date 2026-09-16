@@ -1,6 +1,6 @@
 import { listar, criar } from '@/lib/configuracoes/servico';
 import { lerCorpo, validaCrud, autorizarAdmin, SCHEMAS, type CrudValido } from '@/lib/configuracoes/rotas';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 
 export async function GET(request: Request, { params }: { params: Promise<{ crud: string }> }) {
   const { crud } = await params;
@@ -9,7 +9,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ crud
   if (!sessao) return resposta!;
 
   const incluirInativos = new URL(request.url).searchParams.get('incluir_inativos') === '1';
-  return Response.json({ itens: await listar(crud as CrudValido, incluirInativos) });
+  return respostaJson({ itens: await listar(crud as CrudValido, incluirInativos) });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ crud: string }> }) {
@@ -27,7 +27,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ cru
 
   try {
     const criado = await criar(crud as CrudValido, dados, sessao);
-    return Response.json({ item: criado }, { status: 201 });
+    return respostaJson({ item: criado }, { status: 201 });
   } catch (ex) {
     if (ex instanceof Error && ex.message.includes('Unique')) {
       const nome = (dados as { nome?: string }).nome ?? 'registro';

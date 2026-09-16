@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { loginSchema } from '@komotors/shared';
 import { conferirSenha } from '@/lib/auth/senha';
 import { definirCookiesSessao } from '@/lib/auth/sessao';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 import { registrarAuditoria } from '@/lib/auditoria';
 
 const tentativas = new Map<string, { n: number; janela: number }>();
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     usuario_id: usuario.id,
   });
 
-  return Response.json({
+  return respostaJson({
     usuario: { id: usuario.id, email: usuario.email, nome_completo: usuario.nome_completo, perfil: usuario.perfil },
   });
 }

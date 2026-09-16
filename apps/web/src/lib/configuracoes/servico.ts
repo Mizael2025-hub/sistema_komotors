@@ -1,4 +1,4 @@
-﻿import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { registrarAuditoria } from '@/lib/auditoria';
 import type { Sessao } from '@/lib/auth/sessao';
 import { ERROS } from '@/lib/api/erros';

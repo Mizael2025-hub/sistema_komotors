@@ -17,7 +17,7 @@ export default function PaginaLogin() {
     setEnviando(true);
     try {
       await enviar('/api/auth/login', { metodo: 'POST', corpo: { email, senha } });
-      roteador.replace('/');
+      roteador.replace('/dashboard');
       roteador.refresh();
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao entrar.');

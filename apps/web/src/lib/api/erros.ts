@@ -4,10 +4,17 @@ export type RespostaErro = {
   detalhes?: Record<string, string[]>;
 };
 
+/* respostas JSON sempre com charset explícito (RFC 8259 + transparência de inspeção) */
+export function respostaJson<T>(dados: T, init?: ResponseInit) {
+  const cabec = new Headers(init?.headers);
+  cabec.set('Content-Type', 'application/json; charset=utf-8');
+  return new Response(JSON.stringify(dados), { ...init, headers: cabec });
+}
+
 export function erro(status: number, mensagem: string, detalhes?: Record<string, string[]>, codigo?: string) {
   const corpo: RespostaErro = { erro: mensagem, codigo: codigo ?? `E_HTTP${status}` };
   if (detalhes && Object.keys(detalhes).length > 0) corpo.detalhes = detalhes;
-  return Response.json(corpo, { status });
+  return respostaJson(corpo, { status });
 }
 
 const CODIGOS_PRISMA: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { redimensionarGradeSchema } from '@komotors/shared';
 import { exigirSessao } from '@/lib/auth/sessao';
-import { ERROS, erro } from '@/lib/api/erros';
+import { respostaJson, ERROS, erro } from '@/lib/api/erros';
 import { RegraError, redimensionarLote } from '@/lib/chumbo/servico';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -23,7 +23,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   try {
     await redimensionarLote(id, parsed.data, sessao);
-    return Response.json({ redimensionado: true });
+    return respostaJson({ redimensionado: true });
   } catch (ex) {
     if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
     return ERROS.erroInterno(ex);
