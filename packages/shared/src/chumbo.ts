@@ -94,6 +94,7 @@ export const apontamentoContagemSchema = z.object({
   liga_id: z.number().int().positive('Escolha a liga de chumbo'),
   qtd_barras: z.number().int('Quantidade de barras deve ser numero inteiro').positive('Informe a quantidade de barras'),
   lote_id: z.number().int().positive().optional(),
+  setor_id: z.number().int().positive('Local invalido').optional(),
   observacao: z.string().trim().max(200, 'Observacao com no maximo 200 caracteres').optional().transform((v) => (v ? v : undefined)),
 });
 
@@ -102,9 +103,10 @@ export const edicaoApontamentoSchema = z
     apontamento_id: z.number().int().positive(),
     qtd_barras: z.number().int('Quantidade de barras deve ser numero inteiro').positive('Informe a quantidade de barras').optional(),
     lote_id: z.number().int().positive().nullable().optional(),
+    setor_id: z.number().int().positive('Local invalido').nullable().optional(),
     observacao: z.string().trim().max(200, 'Observacao com no maximo 200 caracteres').nullable().optional(),
   })
-  .refine((d) => d.qtd_barras !== undefined || d.lote_id !== undefined || d.observacao !== undefined, {
+  .refine((d) => d.qtd_barras !== undefined || d.lote_id !== undefined || d.setor_id !== undefined || d.observacao !== undefined, {
     message: 'Informe ao menos um campo para editar',
   });
 
