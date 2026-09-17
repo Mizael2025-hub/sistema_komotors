@@ -361,9 +361,8 @@ flowchart LR
 
 ## 14. Arquitetura Modular e Monorepo
 
-- **Monorepo pnpm workspaces** com três pacotes:
-  - `apps/api` — NestJS (backend + imagem do worker).
-  - `apps/web` — Next.js (frontend PWA).
+- **Monorepo pnpm workspaces** *(adaptação 2026-09-17: dois pacotes — `apps/api` foi fundido em `apps/web`; backend em route handlers Next.js, ver nota no §13.1)*:
+  - `apps/web` — Next.js (frontend PWA + backend full-stack em route handlers).
   - `packages/shared` — schemas Zod, tipos TypeScript, enums e constantes de domínio **compartilhados** entre backend e frontend (fonte única de verdade dos contratos).
 - **Modularidade de domínio**: cada módulo de negócio (chumbo, configurações, auditoria...) é um módulo NestJS isolado e um grupo de rotas no frontend. Novos módulos (teleiras, empaste...) entram **sem alterar** os existentes — o sistema cresce módulo a módulo, sem vínculos automáticos entre eles no primeiro momento.
 - **Sem multi-tenant** — sistema de fábrica única. O isolamento por usuário/perfil (RBAC) existe desde o dia 1.
@@ -680,6 +679,8 @@ erDiagram
 ---
 
 ## 27. Estrutura Recomendada de Pastas
+
+> **Referência da arquitetura original** (NestJS + Docker/Swarm) — a estrutura **executada hoje** é `apps/web` (full-stack) + `packages/shared`, na Vercel/Supabase; ver PROJECT_MAP.md.
 
 ```
 baterias/
