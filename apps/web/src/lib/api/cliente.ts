@@ -1,4 +1,5 @@
-export type ErroApi = { erro: string; detalhes?: Record<string, string[]> };
+/* espelha RespostaErro do servidor (lib/api/erros) — campo "codigo" vem em toda resposta de erro */
+export type ErroApi = { erro: string; codigo?: string; detalhes?: Record<string, string[]> };
 
 type OpcoesAnexo = {
   metodo?: string;
@@ -38,7 +39,7 @@ async function resposta<T>(url: string, opcoes: OpcoesAnexo): Promise<T> {
   } catch {
     corpo = { erro: 'Erro inesperado. Tente novamente.' };
   }
-  const codigo = (corpo as { codigo?: string } | null)?.codigo;
+  const codigo = corpo?.codigo;
   const geral = (corpo?.detalhes?.geral ?? []).join(' ');
   const mensagem = [corpo?.erro ?? 'Erro na operacao.', geral].filter(Boolean).join(' ');
 

@@ -3,6 +3,13 @@
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
+
+/* Cor hexadecimal da liga com fallback cinza — ponto único para os casts de cor
+   do app (a cor vem como string da API; valor desconhecido cai no cinza). */
+export function corLigaHex(cor: string): string {
+  return COR_LIGA_HEX[cor as CorLiga] ?? COR_LIGA_HEX.CINZA;
+}
 
 /* ---------- Bottom sheet estilo iOS ---------- */
 export function BottomSheet({
@@ -14,10 +21,19 @@ export function BottomSheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  /* fecha com Esc — comportamento esperado de diálogo modal */
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [onClose]);
+
   return (
     <>
-      <div className="ios-sheet-backdrop" onClick={onClose} />
-      <div className="ios-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="ios-sheet-backdrop" onClick={onClose} aria-hidden />
+      <div className="ios-sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="ios-grabber" />
         <div className="flex items-center justify-between px-5 pb-1 pt-2">
           <p className="text-[17px] font-bold tracking-tight">{titulo}</p>

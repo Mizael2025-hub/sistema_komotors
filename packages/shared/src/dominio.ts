@@ -45,3 +45,13 @@ export type Polaridade = (typeof POLARIDADE)[number];
 
 export const TIPO_FORNECEDOR = ['INTERNO', 'EXTERNO', 'OUTRO'] as const;
 export type TipoFornecedor = (typeof TIPO_FORNECEDOR)[number];
+
+/* Fuso oficial do sistema (RNF-07): datas de negócio ("hoje") nunca derivam de
+   UTC — entre 21h e 00h em America/Sao_Paulo o UTC já virou o dia seguinte. */
+export const FUSO_FABRICA = 'America/Sao_Paulo';
+
+/** Data local (yyyy-mm-dd) no fuso da fábrica. */
+export function dataHojeLocal(): string {
+  // en-CA formata como ISO curto (yyyy-mm-dd) em qualquer runtime
+  return new Intl.DateTimeFormat('en-CA', { timeZone: FUSO_FABRICA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}

@@ -1,4 +1,5 @@
 import { Prisma, type StatusMonte } from '@prisma/client';
+import { dataHojeLocal } from '@komotors/shared';
 import { prisma } from '@/lib/prisma';
 import { registrarAuditoria } from '@/lib/auditoria';
 import type { Sessao } from '@/lib/auth/sessao';
@@ -48,8 +49,10 @@ function ordenarPorLiberacao<T extends { ordem_liberacao: number; linha: number;
   );
 }
 
-function hojeISO() {
-  return new Date().toISOString().slice(0, 10);
+/* Datas de negócio ("hoje") usam o fuso da fábrica — entre 21h e 00h em
+   America/Sao_Paulo o UTC já virou o dia seguinte (RNF-07). */
+function hojeFabrica() {
+  return dataHojeLocal();
 }
 
 function dataISOparaDate(iso: string) {
@@ -336,7 +339,7 @@ export async function reservarMontes(dados: ReservaInput, sessao: Sessao) {
         status_novo: 'RESERVADO',
         setor_id: dados.setor_id,
         observacao: dados.observacao ?? null,
-        dataISO: hojeISO(),
+        dataISO: hojeFabrica(),
         usuario_id: sessao.usuario_id,
       });
       await registrarAuditoria({
@@ -367,7 +370,7 @@ export async function cancelarReserva(dados: { monte_ids: number[]; observacao?:
         status_anterior: m.status,
         status_novo: 'EM_ESTOQUE',
         observacao: dados.observacao ?? 'Reserva cancelada',
-        dataISO: hojeISO(),
+        dataISO: hojeFabrica(),
         usuario_id: sessao.usuario_id,
       });
       await registrarAuditoria({
@@ -474,6 +477,13 @@ export async function moverSetorMontes(dados: MoverSetorInput, sessao: Sessao) {
 
   return prisma.$transaction(async (tx) => {
     const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Mover ao setor');
+
+    /* RF-M03/M05: peso/barras só fazem sentido para um monte por vez — com vários
+       montes selecionados a ação é sempre integral (peso pela média de cada monte). */
+    if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
+      throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou mova os montes inteiros.', 400);
+    }
+
     const resultado: { monte_id: number; barras_movidas: number; peso: number | null; status: StatusMonte }[] = [];
     const lotesAfetados = new Set<number>();
     let houvePesagemReal = false;
@@ -483,7 +493,7 @@ export async function moverSetorMontes(dados: MoverSetorInput, sessao: Sessao) {
       const pesoInformado = dados.peso_informado != null ? new D(dados.peso_informado) : null;
       const r = await exercerFracaoMonte(tx, m, movidas, pesoInformado, dados.setor_id, sessao, 'MOVIMENTO_SETOR', {
         observacao: dados.observacao,
-        dataISO: hojeISO(),
+        dataISO: hojeFabrica(),
       });
       if (pesoInformado != null && movidas === m.qtd_barras) houvePesagemReal = true;
       lotesAfetados.add(m.lote_id);
@@ -501,6 +511,12 @@ export async function moverSetorMontes(dados: MoverSetorInput, sessao: Sessao) {
 export async function aplicarBaixaVenda(dados: BaixaVendaInput, sessao: Sessao) {
   return prisma.$transaction(async (tx) => {
     const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Baixa/Venda');
+
+    /* RF-M05: mesma regra do movimento — peso/barras apenas com um monte selecionado. */
+    if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
+      throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou dê baixa nos montes inteiros.', 400);
+    }
+
     const resultado: { monte_id: number; barras_movidas: number; peso: number | null; status: StatusMonte }[] = [];
     const lotesAfetados = new Set<number>();
     let houvePesagemReal = false;
@@ -557,7 +573,7 @@ export async function reconciliarLote(tx: Tx, loteId: number) {
         tipo: 'RECONCILIACAO',
         qtd_barras: barrasRestantes,
         observacao: JSON.stringify({ motivo: 'Recalculo dos pesos estimados do lote', montes: detalhes }),
-        data: dataISOparaDate(hojeISO()),
+        data: dataISOparaDate(hojeFabrica()),
         usuario_id: null,
       },
     });
@@ -565,6 +581,11 @@ export async function reconciliarLote(tx: Tx, loteId: number) {
   }
 
   if (montes.every((m) => m.peso_real != null)) {
+    /* RF-P05: o residual é registrado uma única vez por lote — pesagens posteriores
+       já são auditadas pelas movimentações EDICAO/RECONCILIACAO (append-only). */
+    const jaRegistrado = await tx.movimentacao_chumbo.findFirst({ where: { lote_id: loteId, tipo: 'AJUSTE' }, select: { id: true } });
+    if (jaRegistrado) return;
+
     const residual = new D(lote.peso_total_informado).minus(somaPesados).toDecimalPlaces(2);
     await tx.movimentacao_chumbo.create({
       data: {
@@ -575,7 +596,7 @@ export async function reconciliarLote(tx: Tx, loteId: number) {
           residual.isZero()
             ? 'Ajuste de arredondamento: sem diferenca residual.'
             : 'Ajuste de arredondamento: diferenca residual entre peso informado e soma dos pesos reais.',
-        data: dataISOparaDate(hojeISO()),
+        data: dataISOparaDate(hojeFabrica()),
         usuario_id: null,
       },
     });
@@ -615,7 +636,7 @@ export async function editarMonte(dados: EdicaoMonteInput, sessao: Sessao) {
         qtd_barras: dados.qtd_barras ?? monte.qtd_barras,
         peso: pesoNovo ?? pesoAnterior,
         observacao: `Edicao manual — barras: ${monte.qtd_barras} -> ${atualizado.qtd_barras}; peso: ${pesoAnterior ?? '—'} -> ${pesoNovo ?? '—'}`,
-        data: dataISOparaDate(hojeISO()),
+        data: dataISOparaDate(hojeFabrica()),
         usuario_id: sessao.usuario_id,
       },
     });
@@ -833,211 +854,190 @@ export async function contagemDoDia(dataISO: string) {
 }
 
 export async function registrarApontamento(dados: ApontamentoContagemInput, sessao: Sessao) {
-  try {
-    const apontamento = await prisma.$transaction(async (tx) => {
-      const liga = await tx.liga_chumbo.findFirst({ where: { id: dados.liga_id, ativo: true } });
-      if (!liga) throw new RegraError('Liga de chumbo invalida ou inativa.', 400);
+  const apontamento = await prisma.$transaction(async (tx) => {
+    const liga = await tx.liga_chumbo.findFirst({ where: { id: dados.liga_id, ativo: true } });
+    if (!liga) throw new RegraError('Liga de chumbo invalida ou inativa.', 400);
 
-      if (dados.lote_id != null) {
-        const lote = await tx.lote_chumbo.findFirst({ where: { id: dados.lote_id, liga_id: dados.liga_id }, select: { id: true } });
-        if (!lote) throw new RegraError('O lote informado nao pertence a liga escolhida.', 400);
-      }
+    if (dados.lote_id != null) {
+      const lote = await tx.lote_chumbo.findFirst({ where: { id: dados.lote_id, liga_id: dados.liga_id }, select: { id: true } });
+      if (!lote) throw new RegraError('O lote informado nao pertence a liga escolhida.', 400);
+    }
 
-      if (dados.setor_id != null) {
-        const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
-        if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
-      }
+    if (dados.setor_id != null) {
+      const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
+      if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
+    }
 
-      const criado = await tx.contagem_chumbo.create({
-        data: {
-          data: dataDe(dados.data),
-          liga_id: dados.liga_id,
-          qtd_barras: dados.qtd_barras,
-          lote_id: dados.lote_id ?? null,
-          setor_id: dados.setor_id ?? null,
-          observacao: dados.observacao ?? null,
-          usuario_id: sessao.usuario_id,
-        },
-      });
-
-      await registrarAuditoria({
-        entidade: 'contagem_chumbo',
-        entidade_id: criado.id,
-        acao: 'CRIACAO',
-        dados_novos: { data: dados.data, liga_id: dados.liga_id, qtd_barras: dados.qtd_barras, lote_id: dados.lote_id ?? null, setor_id: dados.setor_id ?? null, observacao: dados.observacao ?? null },
+    const criado = await tx.contagem_chumbo.create({
+      data: {
+        data: dataDe(dados.data),
+        liga_id: dados.liga_id,
+        qtd_barras: dados.qtd_barras,
+        lote_id: dados.lote_id ?? null,
+        setor_id: dados.setor_id ?? null,
+        observacao: dados.observacao ?? null,
         usuario_id: sessao.usuario_id,
-        cliente: tx,
-      });
-      return criado;
+      },
     });
-    return { id: apontamento.id };
-  } catch (ex) {
-    if (ex instanceof RegraError) throw ex;
-    throw ex;
-  }
+
+    await registrarAuditoria({
+      entidade: 'contagem_chumbo',
+      entidade_id: criado.id,
+      acao: 'CRIACAO',
+      dados_novos: { data: dados.data, liga_id: dados.liga_id, qtd_barras: dados.qtd_barras, lote_id: dados.lote_id ?? null, setor_id: dados.setor_id ?? null, observacao: dados.observacao ?? null },
+      usuario_id: sessao.usuario_id,
+      cliente: tx,
+    });
+    return criado;
+  });
+  return { id: apontamento.id };
 }
 
 export async function editarApontamento(dados: EdicaoApontamentoInput, sessao: Sessao) {
-  try {
-    const atualizado = await prisma.$transaction(async (tx) => {
-      const registro = await tx.contagem_chumbo.findUnique({
-        where: { id: dados.apontamento_id },
-        include: { lote: { select: { id: true, liga_id: true } } },
-      });
-      if (!registro) throw new RegraError('Apontamento nao encontrado.', 404);
-      if (dataISODe(registro.data) !== hojeISO()) throw new RegraError('Só é possível alterar apontamentos do dia atual.', 409);
-
-      if (dados.lote_id != null && dados.lote_id !== registro.lote_id) {
-        const ligaIdLote = (await tx.lote_chumbo.findUnique({ where: { id: dados.lote_id }, select: { liga_id: true } }))?.liga_id;
-        if (ligaIdLote !== registro.liga_id) throw new RegraError('O lote informado nao pertence a liga do apontamento.', 400);
-      }
-
-      if (dados.setor_id != null) {
-        const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
-        if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
-      }
-
-      const anteriores = {
-        qtd_barras: registro.qtd_barras,
-        lote_id: registro.lote_id,
-        setor_id: registro.setor_id,
-        observacao: registro.observacao,
-      };
-      const novos = {
-        qtd_barras: dados.qtd_barras ?? registro.qtd_barras,
-        lote_id: dados.lote_id === undefined ? registro.lote_id : dados.lote_id,
-        setor_id: dados.setor_id === undefined ? registro.setor_id : dados.setor_id,
-        observacao: dados.observacao === undefined ? registro.observacao : dados.observacao,
-      };
-      // edição gera nova revisão — divergências anteriores ficam desatualizadas
-      const editado = await tx.contagem_chumbo.update({
-        where: { id: registro.id },
-        data: { ...novos, divergencia_sistema: null, revisada_em: null },
-      });
-
-      const mudou = novos.qtd_barras !== anteriores.qtd_barras || novos.lote_id !== anteriores.lote_id || novos.setor_id !== anteriores.setor_id || novos.observacao !== anteriores.observacao;
-      if (mudou) {
-        await registrarAuditoria({
-          entidade: 'contagem_chumbo',
-          entidade_id: registro.id,
-          acao: 'ATUALIZACAO',
-          dados_anteriores: anteriores,
-          dados_novos: novos,
-          usuario_id: sessao.usuario_id,
-          cliente: tx,
-        });
-      }
-      return editado;
+  const atualizado = await prisma.$transaction(async (tx) => {
+    const registro = await tx.contagem_chumbo.findUnique({
+      where: { id: dados.apontamento_id },
+      include: { lote: { select: { id: true, liga_id: true } } },
     });
-    return { id: atualizado.id };
-  } catch (ex) {
-    if (ex instanceof RegraError) throw ex;
-    throw ex;
-  }
-}
+    if (!registro) throw new RegraError('Apontamento nao encontrado.', 404);
+    if (dataISODe(registro.data) !== hojeFabrica()) throw new RegraError('Só é possível alterar apontamentos do dia atual.', 409);
 
-export async function excluirApontamento(dados: ExcluirApontamentoInput, sessao: Sessao) {
-  try {
-    await prisma.$transaction(async (tx) => {
-      const registro = await tx.contagem_chumbo.findUnique({
-        where: { id: dados.apontamento_id },
-        include: { liga: { select: { nome: true } } },
-      });
-      if (!registro) throw new RegraError('Apontamento nao encontrado.', 404);
-      if (dataISODe(registro.data) !== hojeISO()) throw new RegraError('Só é possível excluir apontamentos do dia atual.', 409);
+    if (dados.lote_id != null && dados.lote_id !== registro.lote_id) {
+      const ligaIdLote = (await tx.lote_chumbo.findUnique({ where: { id: dados.lote_id }, select: { liga_id: true } }))?.liga_id;
+      if (ligaIdLote !== registro.liga_id) throw new RegraError('O lote informado nao pertence a liga do apontamento.', 400);
+    }
 
-      await tx.contagem_chumbo.delete({ where: { id: registro.id } });
+    if (dados.setor_id != null) {
+      const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
+      if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
+    }
 
+    const anteriores = {
+      qtd_barras: registro.qtd_barras,
+      lote_id: registro.lote_id,
+      setor_id: registro.setor_id,
+      observacao: registro.observacao,
+    };
+    const novos = {
+      qtd_barras: dados.qtd_barras ?? registro.qtd_barras,
+      lote_id: dados.lote_id === undefined ? registro.lote_id : dados.lote_id,
+      setor_id: dados.setor_id === undefined ? registro.setor_id : dados.setor_id,
+      observacao: dados.observacao === undefined ? registro.observacao : dados.observacao,
+    };
+    // edição gera nova revisão — divergências anteriores ficam desatualizadas
+    const editado = await tx.contagem_chumbo.update({
+      where: { id: registro.id },
+      data: { ...novos, divergencia_sistema: null, revisada_em: null },
+    });
+
+    const mudou = novos.qtd_barras !== anteriores.qtd_barras || novos.lote_id !== anteriores.lote_id || novos.setor_id !== anteriores.setor_id || novos.observacao !== anteriores.observacao;
+    if (mudou) {
       await registrarAuditoria({
         entidade: 'contagem_chumbo',
         entidade_id: registro.id,
-        acao: 'EXCLUSAO',
-        dados_anteriores: {
-          data: dataISODe(registro.data),
-          liga: registro.liga.nome,
-          qtd_barras: registro.qtd_barras,
-          observacao: registro.observacao,
+        acao: 'ATUALIZACAO',
+        dados_anteriores: anteriores,
+        dados_novos: novos,
+        usuario_id: sessao.usuario_id,
+        cliente: tx,
+      });
+    }
+    return editado;
+  });
+  return { id: atualizado.id };
+}
+
+export async function excluirApontamento(dados: ExcluirApontamentoInput, sessao: Sessao) {
+  await prisma.$transaction(async (tx) => {
+    const registro = await tx.contagem_chumbo.findUnique({
+      where: { id: dados.apontamento_id },
+      include: { liga: { select: { nome: true } } },
+    });
+    if (!registro) throw new RegraError('Apontamento nao encontrado.', 404);
+    if (dataISODe(registro.data) !== hojeFabrica()) throw new RegraError('Só é possível excluir apontamentos do dia atual.', 409);
+
+    await tx.contagem_chumbo.delete({ where: { id: registro.id } });
+
+    await registrarAuditoria({
+      entidade: 'contagem_chumbo',
+      entidade_id: registro.id,
+      acao: 'EXCLUSAO',
+      dados_anteriores: {
+        data: dataISODe(registro.data),
+        liga: registro.liga.nome,
+        qtd_barras: registro.qtd_barras,
+        observacao: registro.observacao,
+      },
+      usuario_id: sessao.usuario_id,
+      cliente: tx,
+    });
+  });
+  return {} as const;
+}
+
+export async function revisarContagem(dados: RevisarContagemInput, sessao: Sessao) {
+  return prisma.$transaction(async (tx) => {
+    const apontamentos = await tx.contagem_chumbo.findMany({
+      where: { data: dataDe(dados.data) },
+      include: { liga: { select: { id: true, nome: true, cor: true } } },
+    });
+    if (apontamentos.length === 0) throw new RegraError('Nenhum apontamento nessa data para revisar.', 404);
+
+    const montes = await tx.monte_chumbo.groupBy({
+      by: ['lote_id'],
+      where: { status: { in: STATUS_FISICOS } },
+      _sum: { qtd_barras: true },
+    });
+    const lotes = montes.length
+      ? await tx.lote_chumbo.findMany({ where: { id: { in: montes.map((m) => m.lote_id) } }, select: { id: true, liga_id: true } })
+      : [];
+    const sistemaPorLiga = new Map<number, number>();
+    for (const m of montes) {
+      const lote = lotes.find((l) => l.id === m.lote_id);
+      if (!lote) continue;
+      sistemaPorLiga.set(lote.liga_id, (sistemaPorLiga.get(lote.liga_id) ?? 0) + (m._sum.qtd_barras ?? 0));
+    }
+
+    const ligasDoDia = [...new Set(apontamentos.map((a) => a.liga))];
+    const divergencias = [];
+    for (const liga of ligasDoDia) {
+      const apontado = apontamentos.filter((a) => a.liga_id === liga.id).reduce((s, a) => s + a.qtd_barras, 0);
+      const sistema = sistemaPorLiga.get(liga.id) ?? 0;
+      const divergencia = apontado - sistema;
+      const idsLiga = apontamentos.filter((a) => a.liga_id === liga.id).map((a) => a.id);
+      await tx.contagem_chumbo.updateMany({
+        where: { id: { in: idsLiga }, data: dataDe(dados.data) },
+        data: { divergencia_sistema: divergencia, revisada_em: new Date() },
+      });
+      divergencias.push({ liga: { id: liga.id, nome: liga.nome, cor: liga.cor }, apontado, sistema: sistemaPorLiga.get(liga.id) ?? 0, divergencia });
+
+      await registrarAuditoria({
+        entidade: 'contagem_chumbo',
+        entidade_id: idsLiga[0],
+        acao: 'ATUALIZACAO',
+        dados_novos: {
+          revisao: `divergencia liga ${liga.nome} em ${dados.data}`,
+          apontado,
+          sistema: sistemaPorLiga.get(liga.id) ?? 0,
+          divergencia,
         },
         usuario_id: sessao.usuario_id,
         cliente: tx,
       });
-    });
-    return {} as const;
-  } catch (ex) {
-    if (ex instanceof RegraError) throw ex;
-    throw ex;
-  }
-}
-
-export async function revisarContagem(dados: RevisarContagemInput, sessao: Sessao) {
-  try {
-    const resultado = await prisma.$transaction(async (tx) => {
-      const apontamentos = await tx.contagem_chumbo.findMany({
-        where: { data: dataDe(dados.data) },
-        include: { liga: { select: { id: true, nome: true, cor: true } } },
-      });
-      if (apontamentos.length === 0) throw new RegraError('Nenhum apontamento nessa data para revisar.', 404);
-
-      const montes = await tx.monte_chumbo.groupBy({
-        by: ['lote_id'],
-        where: { status: { in: STATUS_FISICOS } },
-        _sum: { qtd_barras: true },
-      });
-      const lotes = montes.length
-        ? await tx.lote_chumbo.findMany({ where: { id: { in: montes.map((m) => m.lote_id) } }, select: { id: true, liga_id: true } })
-        : [];
-      const sistemaPorLiga = new Map<number, number>();
-      for (const m of montes) {
-        const lote = lotes.find((l) => l.id === m.lote_id);
-        if (!lote) continue;
-        sistemaPorLiga.set(lote.liga_id, (sistemaPorLiga.get(lote.liga_id) ?? 0) + (m._sum.qtd_barras ?? 0));
-      }
-
-      const ligasDoDia = [...new Set(apontamentos.map((a) => a.liga))];
-      const divergencias = [];
-      for (const liga of ligasDoDia) {
-        const apontado = apontamentos.filter((a) => a.liga_id === liga.id).reduce((s, a) => s + a.qtd_barras, 0);
-        const sistema = sistemaPorLiga.get(liga.id) ?? 0;
-        const divergencia = apontado - sistema;
-        const idsLiga = apontamentos.filter((a) => a.liga_id === liga.id).map((a) => a.id);
-        await tx.contagem_chumbo.updateMany({
-          where: { id: { in: idsLiga }, data: dataDe(dados.data) },
-          data: { divergencia_sistema: divergencia, revisada_em: new Date() },
-        });
-        divergencias.push({ liga: { id: liga.id, nome: liga.nome, cor: liga.cor }, apontado, sistema: sistemaPorLiga.get(liga.id) ?? 0, divergencia });
-
-        await registrarAuditoria({
-          entidade: 'contagem_chumbo',
-          entidade_id: idsLiga[0],
-          acao: 'ATUALIZACAO',
-          dados_novos: {
-            revisao: `divergencia liga ${liga.nome} em ${dados.data}`,
-            apontado,
-            sistema: sistemaPorLiga.get(liga.id) ?? 0,
-            divergencia,
-          },
-          usuario_id: sessao.usuario_id,
-          cliente: tx,
-        });
-      }
-      return { data: dados.data, divergencias };
-    });
-    return resultado;
-  } catch (ex) {
-    if (ex instanceof RegraError) throw ex;
-    throw ex;
-  }
+    }
+    return { data: dados.data, divergencias };
+  });
 }
 
 /* últimos N dias com contagem — usado pelo "Comparar com outro dia" */
 export async function resumoContagens(dias: number) {
-  const limite = new Date();
-  limite.setHours(0, 0, 0, 0);
-  limite.setDate(limite.getDate() - (dias - 1));
+  // baseia a janela no "hoje" da fábrica (mesma âncora das datas persistidas)
+  const inicio = dataISOparaDate(hojeFabrica());
+  inicio.setUTCDate(inicio.getUTCDate() - (dias - 1));
 
   const grupos = await prisma.contagem_chumbo.groupBy({
     by: ['data'],
-    where: { data: { gte: limite } },
+    where: { data: { gte: inicio } },
     _sum: { qtd_barras: true },
     _count: { _all: true },
     orderBy: { data: 'desc' },

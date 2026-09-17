@@ -1,9 +1,18 @@
 import { SignJWT, jwtVerify } from 'jose';
 import type { PerfilUsuario } from '@komotors/shared';
 
-const segredo = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? 'segredo-dev-fallback-trocar',
-);
+/* Em produção o segredo é obrigatório (fail fast no boot) — fallback existe
+   apenas para o dev local. Segredo fraco em produção = tokens forjáveis. */
+function obterSegredo(): string {
+  const valor = process.env.JWT_SECRET;
+  if (valor) return valor;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET nao configurado — defina a variavel de ambiente antes de subir em producao.');
+  }
+  return 'segredo-dev-fallback-trocar';
+}
+
+const segredo = new TextEncoder().encode(obterSegredo());
 
 export const ACCESS_TTL_SEGUNDOS = 60 * 15;
 export const REFRESH_TTL_SEGUNDOS = 60 * 60 * 24 * 30;
