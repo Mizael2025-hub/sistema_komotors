@@ -36,7 +36,7 @@ export type DefRelatorio = {
 export const RELATORIOS: DefRelatorio[] = [
   { id: 'movimentacoes', nome: 'Movimentações de chumbo', colunas: ['Data', 'Tipo', 'Liga', 'Lote', 'Setor', 'Barras', 'Peso (kg)', 'Usuário'], formatos: ['xlsx', 'pdf'] },
   { id: 'saldo', nome: 'Saldo de estoque de chumbo', colunas: ['Liga', 'Lote', 'Chegada', 'Barras totais', 'Barras disponíveis', 'Peso disponível (kg)', 'No setor (barras)', 'Vendido (barras)'], formatos: ['xlsx'] },
-  { id: 'contagens', nome: 'Contagens diárias e divergências', colunas: ['Data', 'Liga', 'Apontado', 'Sistema', 'Divergência', 'Revisada em', 'Usu?rio'], formatos: ['xlsx', 'pdf'] },
+  { id: 'contagens', nome: 'Contagens diárias e divergências', colunas: ['Data', 'Liga', 'Local', 'Apontado', 'Sistema', 'Divergência', 'Revisada em', 'Usuário'], formatos: ['xlsx', 'pdf'] },
   { id: 'vendas', nome: 'Baixas / Vendas de chumbo', colunas: ['Data', 'Liga', 'Lote', 'Destino', 'Para quem', 'Barras', 'Peso (kg)', 'Observação', 'Usuário'], formatos: ['xlsx', 'pdf'] },
 ];
 
@@ -121,18 +121,21 @@ export async function gerarDados(rel: TipoRelatorio, filtros: FiltrosRelatorio):
       ...(filtros.liga_id ? { liga_id: filtros.liga_id } : {}),
     },
     orderBy: [{ data: 'asc' }, { liga_id: 'asc' }],
-    include: { liga: { select: { nome: true } }, usuario: { select: { nome_completo: true } } },
+    include: { liga: { select: { nome: true } }, local: { select: { nome: true } }, usuario: { select: { nome_completo: true } } },
   });
 
-  const mapa = new Map<string, { data: string; liga: string; apontado: number; revisada_em: Date | null; sistema: number | null; divergencia: number | null; usuario: string }>();
+  const mapa = new Map<string, { data: string; liga: string; locais: Map<string, number>; apontado: number; revisada_em: Date | null; sistema: number | null; divergencia: number | null; usuario: string }>();
   for (const a of apontamentos) {
     const dia = fmtData(a.data);
     const chave = `${dia}|${a.liga.nome}`;
+    // breakdown por local dentro do grupo (data + liga) — espelha a tela de contagem
+    const nomeLocal = a.local?.nome ?? 'Sem local';
     const atual = mapa.get(chave);
     if (!atual) {
       mapa.set(chave, {
         data: fmtDataBr(fmtData(a.data)),
         liga: a.liga.nome,
+        locais: new Map([[nomeLocal, a.qtd_barras]]),
         apontado: a.qtd_barras,
         revisada_em: a.revisada_em,
         sistema: a.divergencia_sistema != null ? a.qtd_barras - a.divergencia_sistema : null,
@@ -141,6 +144,7 @@ export async function gerarDados(rel: TipoRelatorio, filtros: FiltrosRelatorio):
       });
     } else {
       atual.apontado += a.qtd_barras;
+      atual.locais.set(nomeLocal, (atual.locais.get(nomeLocal) ?? 0) + a.qtd_barras);
       if (a.revisada_em && (!atual.revisada_em || a.revisada_em > atual.revisada_em)) {
         atual.revisada_em = a.revisada_em;
         atual.sistema = a.divergencia_sistema != null ? atual.apontado - a.divergencia_sistema : null;
@@ -152,6 +156,7 @@ export async function gerarDados(rel: TipoRelatorio, filtros: FiltrosRelatorio):
   const linhas = [...mapa.values()].map((r) => [
     r.data,
     r.liga,
+    [...r.locais.entries()].map(([nome, qtd]) => `${nome}: ${qtd}`).join(' · '),
     String(r.apontado),
     r.sistema != null ? String(r.sistema) : 'sem revisão',
     r.divergencia != null ? String(r.divergencia) : '—',

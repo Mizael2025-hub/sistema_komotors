@@ -163,7 +163,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
   - **Data da chegada** — pré-preenchida com a data de hoje, editável via calendário.
   - **Número do lote** — informado manualmente; código único do lote (validação de duplicidade em tempo real).
   - **Liga de chumbo** — uma liga por apontamento (lote); toda a remessa é da mesma liga; seleção via menu suspenso com as ligas ativas.
-  - **Fornecedor** — informativo (interno/externo); 50 ou 35 barras por monte como padrão sugerido, conforme o fornecedor.
+  - ~~Fornecedor~~ — **removido em 2026-09-17** (decisão do cliente): todo lote é tratado como interno; a coluna permanece no banco com default (`OUTRO`) e não é mais coletada na interface.
   - **Peso total informado (opcional)** — usado quando a pesagem da remessa foi feita **em uma única vez**, sem peso individual por monte (ver RF-P01).
   - **Grade 2D pré-configurada com 2 linhas × 5 colunas**, expansível no momento do cadastro (adicionar/remover linhas e colunas conforme a posição física real).
 - **RF-E02** **Interação da grade na entrada** — a grade **não tem aparência de tabela**: cada célula é um **botão**. Ao tocar/clicar em uma célula na posição onde o chumbo fisicamente está, abre um **popup** com os campos **peso** e **quantidade de barras** daquele monte (e indicação da **ordem de armazenamento/sequência de liberação**, ver RF-E03). Células vazias permanecem limpas. Ao final do preenchimento, salvar cria o lote e um **monte por célula marcada**, todos com status `EM_ESTOQUE`.
@@ -181,8 +181,8 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 - **RF-S02** **Grade 2D viva** — o tamanho da grade se movimenta conforme a quantidade necessária (linhas/colunas expansíveis/retráteis pelo próprio lote). Células com monte renderizam como **botões** com identificação visual: cor da liga, peso, barras e status; células vazias permanecem discretas.
 - **RF-S03** **Interação na grade** (comportamento por clique/toque):
   - **1 clique** seleciona; **1 clique novamente** deseleciona (múltipla seleção permitida). **1 clique em área vazia** deseleciona tudo.
-  - **2 cliques rápidos** em item selecionado abre o **card de menu de ações** (RF-M01).
-  - **2 cliques rápidos** em item **não disponível** (vendido/movido integralmente) abre um **mini-resumo**: para onde foi, quando, e link para o histórico completo.
+  - Com **1 ou N montes selecionados**, a **barra de ações flutuante** (acima da tabbar) abre os formulários das ações (RF-M01) — atualizado em 2026-09-17, substituiu o duplo clique.
+  - **1 toque** em item **não disponível** (vendido/movido integralmente) abre um **mini-resumo**: para onde foi, quando, e link para o histórico completo.
   - **Clique longo** (ou modo de reorganização) habilita **arrastar o monte para outra posição**, reorganizando a grade fisicamente (posição nova validada como vazia).
 - **RF-S04** **Identificação visual dos montes**: selecionado, reservado, parcial, no setor, vendido/movido (não disponível), ajustado — via cor, borda, selo ou ícone, com legenda acessível.
 - **RF-S05** **Responsividade** — em telas pequenas (celular), **somente a grade** ganha barra de rolagem horizontal; demais elementos (cards de resumo) permanecem visíveis. No desktop não há rolagem.
@@ -196,7 +196,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 
 ### 10.5 Controle de Chumbo — Ações e Movimentações
 
-- **RF-M01** **Menu de ações** (aberto por 2 cliques em monte selecionado; disponível para 1 ou N montes selecionados): **Reservar**, **Mover ao setor**, **Baixa/Venda**, **Editar**, além de **Ver histórico**.
+- **RF-M01** **Menu de ações** (aberto pela **barra de ações flutuante** com 1 ou N montes selecionados; atualizado em 2026-09-17): **Reservar**, **Mover ao setor**, **Baixa/Venda**, **Editar**, além de **Ver histórico**. Com **vários montes**, as ações são sempre **integrais** (peso e quantidade de barras só podem ser informados com um único monte selecionado — RF-M03/M05).
 - **RF-M02** **Reservar** — separa o monte para um setor de destino (menu suspenso com setores ativos) + observação opcional. O chumbo **continua no estoque**, mas fica **marcado visualmente como separado** (status RESERVADO; o card de resumo exibe "Reservado" apenas informativamente). Reserva não é exclusiva por setor: o monte fica vinculado ao setor escolhido.
 - **RF-M03** **Mover ao setor** — registra que o chumbo **saiu do estoque do almoxarifado** e ficou disponível no estoque do setor (**não é consumo**; ocorre em poucas quantidades durante o dia). Campos: setor (se o monte estava reservado, o setor **já vem preenchido**; caso contrário, informar), observação opcional e **quantidade de barras** (permite mover fração do monte).
   - Se a quantidade movida **= total de barras do monte**: status passa a `NO_SETOR` com setor vinculado.
@@ -225,7 +225,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 
 ### 10.7 Controle de Chumbo — Contagem Diária
 
-- **RF-CT01** **Menu de contagem** com **data** (pré-preenchida hoje, editável via calendário) e **card de apontamentos**: **liga** (obrigatória; seleção via botões coloridos), **quantidade de barras** (obrigatória; teclado numérico no mobile), **lote** (opcional; menu suspenso), **observação** (opcional). Botão **Adicionar**.
+- **RF-CT01** **Menu de contagem** com **data** (pré-preenchida hoje, editável via calendário) e **card de apontamentos**: **liga** (obrigatória; seleção via botões coloridos), **quantidade de barras** (obrigatória; teclado numérico no mobile), **local** (opcional; menu suspenso com os setores ativos — atualizado em 2026-09-17, substituiu o campo lote), **observação** (opcional). Botão **Adicionar**.
 - **RF-CT02** Ao adicionar, exibe abaixo um **card de totais por liga** (soma das barras apontadas por liga nesse dia) seguido do **histórico do dia** com os apontamentos individuais (editáveis/excluíveis enquanto do mesmo dia, com auditoria).
 - **RF-CT03** Botão **Revisar** compara a contagem com o sistema: mostra, dentro do card de totais, a **quantidade de barras que o sistema aponta** por liga, com destaque de divergências. A contagem do sistema considera **estoque + setores** (total físico na fábrica, independentemente de onde esteja — exclui apenas vendas/baixas).
 - **RF-CT04** Apontamentos persistidos por dia, por usuário; histórico consultável por período.
@@ -336,6 +336,8 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 | Registry | GHCR — `ghcr.io/<SEU-USUARIO-GITHUB>/baterias-backend` e `baterias-frontend` |
 | Documentação | MKDocs (Mermaid) + PROJECT_MAP.md |
 
+> **Nota de execução (atualizada 2026-09-17):** as camadas NestJS, Redis/BullMQ e Docker/Swarm/Traefik foram **substituídas** por route handlers do Next.js (`apps/web`) + Supabase (Postgres) + Vercel — decisões e pendências registradas no `PROJECT_MAP.md`. As seções de infraestrutura local (§28–§33) permanecem como referência para uma futura migração para servidor próprio. PWA offline-first (Serwist/Dexie) segue pendente (Sprint 14).
+
 ### 13.2 Diagrama de Componentes (Mermaid)
 
 ```mermaid
@@ -411,7 +413,7 @@ flowchart LR
   - `loginSchema` (email, senha).
   - `entradaLoteSchema` (data_chegada, codigo, liga_id, fornecedor, peso_total_informado?, linhas, colunas, montes[] com linha, coluna, peso?, qtd_barras, ordem_liberacao?).
   - `reservaSchema`, `movimentoSetorSchema` (setor_id, qtd_barras, peso?, observacao?), `baixaVendaSchema` (destino, para_quem, data, qtd_barras, peso?, observacao?), `edicaoMonteSchema`.
-  - `contagemSchema` (data, liga_id, qtd_barras, lote_id?, observacao?).
+  - `contagemSchema` (data, liga_id, qtd_barras, lote_id?, setor_id? (local), observacao?).
   - `ligaSchema`, `setorSchema`, `colaboradorSchema`, `modeloGradeSchema`, `polaridadeSchema`.
 - Regras transversais nos schemas: datas ISO; quantidades inteiras > 0; pesos Decimal ≥ 0 com até 2 casas; strings com limites de tamanho.
 
@@ -475,7 +477,7 @@ AcaoAuditoria      CRIACAO | ATUALIZACAO | EXCLUSAO
 **movimentacao_chumbo** — `id`, `monte_id` (FK), `lote_id` (FK), `tipo` (TipoMovimentacao), `status_anterior?`, `status_novo?`, `qtd_barras` (Int), `peso` (Decimal?), `setor_id` (FK setor?), `destino` (String?), `para_quem` (String?), `observacao` (String?), `data` (Date), `usuario_id` (FK usuario), `created_at`.
 - **Append-only**: movimentações nunca são editadas ou excluídas — correções geram novas movimentações (EDICAO/AJUSTE).
 
-**contagem_chumbo** — `id`, `data` (Date), `liga_id` (FK), `qtd_barras` (Int), `lote_id` (FK lote_chumbo?), `observacao` (String?), `divergencia_sistema` (Int?, calculada na revisão), `revisada_em` (DateTime?), `usuario_id` (FK), `created_at`.
+**contagem_chumbo** — `id`, `data` (Date), `liga_id` (FK), `qtd_barras` (Int), `lote_id` (FK lote_chumbo?), `setor_id` (FK setor? — local da contagem, adicionado em 2026-09-17), `observacao` (String?), `divergencia_sistema` (Int?, calculada na revisão), `revisada_em` (DateTime?), `usuario_id` (FK), `created_at`.
 
 **log_auditoria** — `id`, `entidade` (String), `entidade_id` (Int), `acao` (AcaoAuditoria), `dados_anteriores` (Json?), `dados_novos` (Json?), `usuario_id` (FK), `created_at`. Sem update/delete pela aplicação.
 
@@ -514,13 +516,13 @@ erDiagram
 
 1. Na tela de estoque (liga escolhida), expande o card do lote.
 2. **1 clique** seleciona o monte (ou vários).
-3. **2 cliques** abrem o menu de ações → **Reservar**.
+3. A **barra de ações flutuante** → **Reservar**.
 4. Informa o **setor de destino** + observação opcional → confirmar.
 5. O monte ganha status `RESERVADO` e marcação visual "separado para {setor}"; permanece contando no disponível do estoque; timeline atualizada.
 
 ### 20.3 Movimentação ao setor
 
-1. Seleciona um ou mais montes na grade → **2 cliques** → **Mover ao setor**.
+1. Seleciona um ou mais montes na grade → **barra de ações** → **Mover ao setor**.
 2. Se o monte estava reservado, o **setor já vem preenchido**; caso contrário, informa o setor.
 3. Informa **quantidade de barras** (fração permitida) e observação opcional. Peso automático pela **média do monte** (`peso / barras`), editável — ao editar, as barras restantes se auto-ajustam (RF-P04).
 4. **Múltiplos montes**: a liberação segue a **ordem da grade** (cima→baixo, esquerda→direita) ou ordem explícita (RF-E03).
@@ -531,13 +533,13 @@ erDiagram
 
 ### 20.4 Baixa/Venda
 
-1. Seleciona o monte → menu de ações → **Baixa/Venda**.
+1. Seleciona o monte → barra de ações → **Baixa/Venda**.
 2. Informa: destino, **para quem**, observação (consta no relatório), **data** (default hoje, editável), **quantidade de barras**, **peso** (auto pela média, editável).
 3. Confirmar → movimentação BAIXA_VENDA; monte `VENDIDO` (ou parcial); sai dos totais físicos da fábrica.
 
 ### 20.5 Edição de monte
 
-1. Menu de ações → **Editar** — corrige peso ou quantidade de barras.
+1. Barra de ações → **Editar** — corrige peso ou quantidade de barras.
 2. Alteração reflete **imediatamente** nos totais; movimentação EDICAO + auditoria com valores anteriores/novos.
 
 ### 20.6 Reconciliação de peso (automática)
@@ -550,7 +552,7 @@ erDiagram
 ### 20.7 Contagem diária e revisão
 
 1. **Chumbo → Contagem de chumbo**: data pré-preenchida (editável).
-2. Apontamentos: **liga** (botões coloridos), **barras** (teclado numérico), lote (opcional), observação → **Adicionar**.
+2. Apontamentos: **liga** (botões coloridos), **barras** (teclado numérico), **local** (opcional), observação → **Adicionar**.
 3. Exibe **totais por liga** do dia + histórico dos apontamentos individuais.
 4. **Revisar**: dentro do card de totais, mostra as **barras por liga segundo o sistema** (estoque + setores) e destaca divergências; divergência persistida com a data (RF-CT05).
 
@@ -652,7 +654,7 @@ erDiagram
 
 ### 24.3 Componentes-chave
 
-- Grade 2D interativa (seleção múltipla, duplo clique para ações, arraste para reorganizar).
+- Grade 2D interativa (seleção múltipla, barra de ações flutuante, arraste para reorganizar).
 - Cards de resumo expansíveis (lote → grade).
 - Timeline de histórico (monte/lote/movimentação).
 - Filtros instantâneos por liga (chips coloridos).
@@ -1097,7 +1099,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [ ] **PWA instalável** no celular; service worker ativo (exige o HTTPS acima).
 - [ ] Sistema **acessível pela rede local com a internet desligada** (DNS local configurado).
 - [ ] Entrada de lote com grade 2×5 **expansível** cria lote + montes nas posições marcadas.
-- [ ] Grade por lote com **seleção múltipla**, menu de ações por duplo clique e **arraste para reorganizar**.
+- [ ] Grade por lote com **seleção múltipla**, barra de ações flutuante e **arraste para reorganizar**.
 - [ ] **Reservar / Mover ao setor / Baixa-Venda / Editar** funcionam com os campos e validações especificados.
 - [ ] Movimentação parcial calcula **peso pela média**, editável, com **auto-ajuste** do restante.
 - [ ] Múltiplos montes seguem a **ordem da grade** na liberação.
@@ -1138,7 +1140,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 ## 37. Sprints de Desenvolvimento
 
-> **STATUS DE EXECUÇÃO (atualizado em 2026-09-10):** arquitetura adaptada para **nuvem gratuita** — Vercel (deploy/CI) + Supabase (Postgres, `sa-east-1`) — substituindo o servidor local com Docker Swarm/Traefik do texto original. Backend full-stack em **route handlers do Next.js** (`apps/web`) em vez de NestJS separado; filas Redis/BullMQ ficarão no Postgres (pg-boss) quando necessárias. Os itens marcados com **[x]** estão implementados e em produção; notas explicam adaptações. Detalhes passo a passo no `PROJECT_MAP.md` (Log de Execução).
+> **STATUS DE EXECUÇÃO (atualizado em 2026-09-17):** arquitetura adaptada para **nuvem gratuita** — Vercel (deploy/CI) + Supabase (Postgres, `sa-east-1`) — substituindo o servidor local com Docker Swarm/Traefik do texto original. Backend full-stack em **route handlers do Next.js** (`apps/web`) em vez de NestJS separado; filas Redis/BullMQ ficarão no Postgres (pg-boss) quando necessárias. Os itens marcados com **[x]** estão implementados e em produção; notas explicam adaptações. Detalhes passo a passo no `PROJECT_MAP.md` (Log de Execução).
 
 ### Sprint 1 — Fundação do Monorepo ✅
 
@@ -1209,7 +1211,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 - [x] Backend: reservar, cancelar reserva, mover ao setor (parcial/total), baixa/venda, editar — com transações, movimentações append-only e ordem da grade/ordem de liberação para múltiplos montes.
 - [x] Peso pela média com edição manual e auto-ajuste do restante (RF-P04).
-- [x] Frontend: seleção múltipla, menu de ações (duplo clique + barra fixa), mini-resumo/histórico de montes indisponíveis, telas de cada ação com defaults (data hoje, setor da reserva, peso auto pela média).
+- [x] Frontend: seleção múltipla, barra de ações flutuante (atualizada do duplo clique em 2026-09-17), mini-resumo/histórico de montes indisponíveis, telas de cada ação com defaults (data hoje, setor da reserva, peso auto pela média). Múltiplos montes: ações sempre integrais (peso/barras só com um monte).
 - [x] Timeline de histórico do monte. *(Timeline dedicada do lote pendente — reconciliações aparecem nas movimentações.)*
 
 ### Sprint 12 — Reconciliação de Peso ✅
@@ -1220,8 +1222,8 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 ### Sprint 13 — Contagem Diária ✅
 
-- [x] Backend: apontamentos por dia/usuário, totais por liga, revisão comparativa (estoque + setores) com persistência da divergência.
-- [x] Frontend: tela de contagem (data pré-preenchida, botões de liga, teclado numérico), card de totais com "Revisar", histórico do dia.
+- [x] Backend: apontamentos por dia/usuário **e local (setor)**, totais por liga, revisão comparativa (estoque + setores) com persistência da divergência.
+- [x] Frontend: tela de contagem (data pré-preenchida, botões de liga, teclado numérico, campo local), card de totais com "Revisar", histórico do dia.
 
 ### Sprint 14 — PWA Offline-First
 
@@ -1239,7 +1241,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 
 ### Sprint 16 — Relatórios ✅ *(parcial)*
 
-- [x] XLSX (exceljs) e PDF (pdfmake, fontes PT-BR): movimentações, saldo, contagens/divergências, baixas/vendas.
+- [x] XLSX (exceljs) e PDF (pdfmake, fontes PT-BR): movimentações, saldo, contagens/divergências (com coluna **Local** — breakdown por setor), baixas/vendas.
 - [x] Tela de relatórios com filtros; download imediato com loading + notificação interna. *(Relatórios pesados em fila assíncrona pendência — volume do Módulo 1 hoje é baixo e a geração é síncrona.)*
 
 ### Sprint 17 — Notificações Internas ✅
@@ -1290,7 +1292,7 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [ ] Login por email (JWT access + refresh com rotação); RBAC ADMIN/OPERADOR desde o dia 1.
 - [ ] Auditoria imutável com valores anteriores/novos em todas as entidades críticas; timeline por registro.
 - [ ] Entrada de chumbo: apontamento único criando lote + montes; grade 2×5 expansível; lote único por liga.
-- [ ] Grade 2D por lote: botões (não tabela), seleção múltipla, duplo clique = ações, arraste = reorganizar.
+- [ ] Grade 2D por lote: botões (não tabela), seleção múltipla, barra de ações = ações, arraste = reorganizar.
 - [ ] Ações: Reservar, Mover ao setor (parcial/total), Baixa/Venda, Editar — todas auditadas e append-only.
 - [ ] Peso: estimado vs. real, reconciliação automática do lote, ajuste residual auditável, peso médio com auto-ajuste.
 - [ ] Contagem diária com Revisar comparando estoque + setores; divergências persistidas.

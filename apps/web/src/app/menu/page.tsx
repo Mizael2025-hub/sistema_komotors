@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { consumir, enviar } from '@/lib/api/cliente';
+import { consumir } from '@/lib/api/cliente';
 import { TabBar, ToggleTema } from '@/components/ui';
 import { SinoNotificacoes } from '@/components/sino';
+import { BotaoSair } from '@/components/botao-sair';
 import pkg from '../../../package.json';
 
 const VERSAO = (pkg as { version: string }).version;
@@ -58,23 +58,11 @@ const ITENS: ItemMenu[] = [
 const fmtKg = (n: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(n);
 
 export default function PaginaMais() {
-  const roteador = useRouter();
   const [dados, setDados] = useState<Dashboard | null>(null);
-  const [saindo, setSaindo] = useState(false);
 
   useEffect(() => {
     consumir<Dashboard>('/api/lead/dashboard?dias=30').then(setDados).catch(() => setDados(null));
   }, []);
-
-  async function sair() {
-    setSaindo(true);
-    try {
-      await enviar('/api/auth/logout', { metodo: 'POST' });
-    } finally {
-      roteador.replace('/login');
-      roteador.refresh();
-    }
-  }
 
   const entradas = dados?.entradas_saidas.find((m) => m.tipo === 'ENTRADA')?.peso ?? 0;
   const saidas = dados?.entradas_saidas.find((m) => m.tipo === 'BAIXA_VENDA')?.peso ?? 0;
@@ -160,18 +148,7 @@ export default function PaginaMais() {
         </div>
 
         {/* sair da conta */}
-        <button
-          onClick={sair}
-          disabled={saindo}
-          className="ios-card mx-4 mt-3.5 flex w-[calc(100%-32px)] items-center gap-3 px-4 py-3.5 text-left active:bg-[var(--muted)] disabled:opacity-50"
-        >
-          <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[9px]" style={{ background: 'var(--destructive-soft)' }}>
-            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="var(--destructive)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-            </svg>
-          </span>
-          <span className="flex-1 text-[15px] font-semibold text-[var(--destructive)]">{saindo ? 'Saindo…' : 'Sair da conta'}</span>
-        </button>
+        <BotaoSair variante="linha" />
 
         <p className="pb-2 pt-6 text-center text-[11px] font-semibold tracking-wide text-[var(--muted-foreground)]">v{VERSAO}</p>
       </main>

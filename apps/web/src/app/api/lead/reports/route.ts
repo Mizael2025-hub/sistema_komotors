@@ -1,5 +1,6 @@
 import { exigirSessao } from '@/lib/auth/sessao';
 import { ERROS, erro } from '@/lib/api/erros';
+import { dataHojeLocal } from '@komotors/shared';
 import { gerarDados, nomeArquivo, RELATORIOS, TIPOS_RELATORIO, type TipoRelatorio } from '@/lib/relatorios/gerador';
 import { pdfDe, xlsxDe, type Tabela } from '@/lib/relatorios/exportacao';
 import { criarNotificacao } from '@/lib/notificacao';
@@ -26,7 +27,8 @@ export async function GET(request: Request) {
   if (tipo === 'saldo' && de && !DATA_ISO.test(de)) return erro(400, 'Data inicial inválida.', undefined, 'E_VALIDACAO');
 
   const rel = tipo as TipoRelatorio;
-  const hoje = new Date().toISOString().slice(0, 10);
+  // "hoje" no fuso da fábrica (RNF-07) — nunca UTC
+  const hoje = dataHojeLocal();
   const filtros = {
     de: tipo === 'saldo' && !de ? hoje : de,
     ate: tipo === 'saldo' && !ate ? hoje : ate,

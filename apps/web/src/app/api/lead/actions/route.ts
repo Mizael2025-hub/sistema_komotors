@@ -40,12 +40,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    let resultado;
-    if (acao === 'reservar') resultado = await reservarMontes(parsed.data as ReservaInput, sessao);
-    else if (acao === 'cancelar-reserva') resultado = await cancelarReserva(parsed.data as CancelarReservaInput, sessao);
-    else if (acao === 'mover-setor') resultado = await moverSetorMontes(parsed.data as MoverSetorInput, sessao);
-    else resultado = await aplicarBaixaVenda(parsed.data as BaixaVendaInput, sessao);
-    return respostaJson(resultado);
+    if (acao === 'reservar') return respostaJson(await reservarMontes(parsed.data as ReservaInput, sessao));
+    if (acao === 'cancelar-reserva') return respostaJson(await cancelarReserva(parsed.data as CancelarReservaInput, sessao));
+    if (acao === 'mover-setor') return respostaJson(await moverSetorMontes(parsed.data as MoverSetorInput, sessao));
+    return respostaJson(await aplicarBaixaVenda(parsed.data as BaixaVendaInput, sessao));
   } catch (ex) {
     if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
     return ERROS.erroInterno(ex);

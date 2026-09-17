@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { COR_LIGA_HEX, type CorLiga, type StatusMonte } from '@komotors/shared';
+import { dataHojeLocal, type StatusMonte } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
-import { BottomSheet, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
+import { BottomSheet, corLigaHex, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
 import { SinoNotificacoes } from '@/components/sino';
 
 type Monte = {
@@ -113,9 +113,16 @@ const fmtNum = (n: number | null | undefined) =>
 
 const dataBr = (iso: string) => (!iso ? '—' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
-
 const letraLinha = (l: number) => String.fromCharCode(64 + l);
+
+/* Ações da barra flutuante — ícones fixos, sem dependência de estado. */
+const ACAO_BOTOES: { acao: 'reservar' | 'mover-setor' | 'venda' | 'editar' | 'historico'; rotulo: string; cor: string; icone: string }[] = [
+  { acao: 'reservar', rotulo: 'Reservar', cor: 'var(--laranja)', icone: 'M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z' },
+  { acao: 'mover-setor', rotulo: 'Mover', cor: 'var(--roxo)', icone: 'M3 12l9-9 9 9M5 10v10h14V10' },
+  { acao: 'venda', rotulo: 'Venda', cor: 'var(--destructive)', icone: 'M9 12l2 2 4-5M21 12c-1 5-5 8-9 10-4-2-8-5-9-10V5l9-3 9 3z' },
+  { acao: 'editar', rotulo: 'Editar', cor: 'var(--tint)', icone: 'M17 3l4 4L8 20l-5 1 1-5z' },
+  { acao: 'historico', rotulo: 'Histórico', cor: 'var(--tint)', icone: 'M12 7v5l3 3M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0z' },
+];
 
 /* buckets por status — mesmo recorte visual do protótipo (disjoint) */
 type Balde = { peso: number; barras: number };
@@ -160,25 +167,35 @@ export default function PaginaEstoqueChumbo() {
 
   const [formReserva, setFormReserva] = useState({ setor_id: '', observacao: '' });
   const [formMover, setFormMover] = useState({ setor_id: '', qtd_barras: '', peso: '', observacao: '' });
-  const [formVenda, setFormVenda] = useState({ destino: '', para_quem: '', data: hojeISO(), qtd_barras: '', peso: '', pesoEditado: false, observacao: '' });
+  const [formVenda, setFormVenda] = useState({ destino: '', para_quem: '', data: dataHojeLocal(), qtd_barras: '', peso: '', pesoEditado: false, observacao: '' });
   const [formEditar, setFormEditar] = useState({ peso: '', qtd_barras: '' });
 
   const sumirToast = useCallback(() => setAviso(null), []);
 
+  /* sequência da carga — cliques repetidos em "sincronizar" descartam respostas
+     antigas (a última carga concluída é a que vale) */
+  const seqCarga = useRef(0);
+
   const carregarTudo = useCallback(async () => {
+    const seq = ++seqCarga.current;
     setErro(null);
     try {
       const r = await consumir<{ itens: ItemLiga[] }>('/api/config/ligas');
       const itens = r.itens ?? [];
-      setLigasItens(itens);
       const resultados = await Promise.all(
         itens.map((l) => consumir<Estoque>(`/api/lead/stock?liga_id=${l.id}`).catch(() => null)),
       );
+      if (seq !== seqCarga.current) return; // chegou tarde — outra carga já assumiu
       const validos = resultados.filter((e): e is Estoque => e != null);
+      setLigasItens(itens);
       setEstoques(validos);
       // preserva os lotes que o usuário expandiu — a recarga não recolhe nada
       setExpandidos((prev) => new Set([...prev].filter((x) => validos.some((e) => e.lotes.some((l) => l.id === x)))));
+      // falha parcial de liga não pode passar em silêncio — lotes sumiriam da vista
+      const falhas = resultados.length - validos.length;
+      if (falhas > 0) setAviso({ tipo: 'warn', mensagem: `${falhas} liga(s) não carregaram — toque no sincronizar` });
     } catch {
+      if (seq !== seqCarga.current) return;
       setLigasItens([]);
       setErro('Erro ao carregar estoque.');
     }
@@ -251,25 +268,35 @@ export default function PaginaEstoqueChumbo() {
   function abrirAcaoDireta(acao: 'reservar' | 'mover-setor' | 'venda' | 'editar') {
     const ids = [...selecionados];
     if (ids.length === 0) return;
-    const primeiro = montesConhecidos().find((m) => m.id === ids[0]);
-    if (primeiro) {
-      const pesoTexto = primeiro.peso_exibido != null ? String(primeiro.peso_exibido) : '';
-      setFormMover((f) => ({
-        ...f,
-        setor_id: primeiro.setor_reserva_id != null ? String(primeiro.setor_reserva_id) : f.setor_id,
-        qtd_barras: String(primeiro.qtd_barras),
-        peso: pesoTexto,
-      }));
-      setFormVenda((f) => ({ ...f, qtd_barras: String(primeiro.qtd_barras), peso: pesoTexto, pesoEditado: false }));
-      setFormEditar({ peso: pesoTexto, qtd_barras: String(primeiro.qtd_barras) });
+    if (ids.length === 1) {
+      /* com um monte: pré-preenche peso/barras do monte para edição */
+      const primeiro = primeiroSelecionado();
+      if (primeiro) {
+        const pesoTexto = primeiro.peso_exibido != null ? String(primeiro.peso_exibido) : '';
+        setFormMover((f) => ({
+          ...f,
+          setor_id: primeiro.setor_reserva_id != null ? String(primeiro.setor_reserva_id) : f.setor_id,
+          qtd_barras: String(primeiro.qtd_barras),
+          peso: pesoTexto,
+        }));
+        setFormVenda((f) => ({ ...f, qtd_barras: String(primeiro.qtd_barras), peso: pesoTexto, pesoEditado: false }));
+        setFormEditar({ peso: pesoTexto, qtd_barras: String(primeiro.qtd_barras) });
+      }
+    } else {
+      /* com vários montes a ação é sempre integral — peso/barras ficam vazios
+         e desabilitados (RF-M03/M05; o servidor também rejeita) */
+      setFormMover((f) => ({ ...f, qtd_barras: '', peso: '' }));
+      setFormVenda((f) => ({ ...f, qtd_barras: '', peso: '', pesoEditado: false }));
+      setFormEditar({ peso: '', qtd_barras: '' });
     }
     setAcaoAtiva(acao);
     setModal('acoes');
   }
 
-  /* peso pela média do monte: peso_monte / barras_monte × barras_movidas */
+  /* peso pela média do monte: peso_monte / barras_monte × barras_movidas (só com 1 monte) */
   function barrasChange(tipo: 'mover' | 'venda', valor: string) {
-    const primeiro = montesConhecidos().find((m) => m.id === [...selecionados][0]);
+    if (selecionados.size > 1) return;
+    const primeiro = primeiroSelecionado();
     const n = parseInt(valor, 10);
     const media =
       primeiro && primeiro.qtd_barras > 0 && primeiro.peso_exibido != null && n > 0
@@ -295,6 +322,7 @@ export default function PaginaEstoqueChumbo() {
     if (acaoAtiva == null || selecionados.size === 0) return;
     setEnviando(true);
     setErro(null);
+    const varios = selecionados.size > 1; // peso/barras só existem com 1 monte (RF-M03/M05)
     try {
       if (acaoAtiva === 'editar') {
         const monteId = [...selecionados][0];
@@ -317,8 +345,8 @@ export default function PaginaEstoqueChumbo() {
           dados = {
             monte_ids: [...selecionados],
             setor_id: Number(formMover.setor_id),
-            qtd_barras: formMover.qtd_barras === '' ? undefined : Number(formMover.qtd_barras),
-            peso_informado: formMover.peso === '' ? undefined : Number(formMover.peso),
+            qtd_barras: varios ? undefined : formMover.qtd_barras === '' ? undefined : Number(formMover.qtd_barras),
+            peso_informado: varios ? undefined : formMover.peso === '' ? undefined : Number(formMover.peso),
             observacao: formMover.observacao || undefined,
           };
         } else {
@@ -327,9 +355,9 @@ export default function PaginaEstoqueChumbo() {
             destino: formVenda.destino,
             para_quem: formVenda.para_quem,
             data: formVenda.data,
-            qtd_barras: formVenda.qtd_barras === '' ? undefined : Number(formVenda.qtd_barras),
-            peso_informado: formVenda.peso === '' ? undefined : Number(formVenda.peso),
-            peso_editado: formVenda.pesoEditado,
+            qtd_barras: varios ? undefined : formVenda.qtd_barras === '' ? undefined : Number(formVenda.qtd_barras),
+            peso_informado: varios ? undefined : formVenda.peso === '' ? undefined : Number(formVenda.peso),
+            peso_editado: varios ? false : formVenda.pesoEditado,
             observacao: formVenda.observacao || undefined,
           };
         }
@@ -395,13 +423,9 @@ export default function PaginaEstoqueChumbo() {
 
   const itensSelecionados = () => [...selecionados].map((id) => montesConhecidos().find((m) => m.id === id)).filter((m): m is Monte => m != null);
 
-  const ACAO_BOTOES: { acao: 'reservar' | 'mover-setor' | 'venda' | 'editar' | 'historico'; rotulo: string; cor: string; icone: string }[] = [
-    { acao: 'reservar', rotulo: 'Reservar', cor: 'var(--laranja)', icone: 'M12 2l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z' },
-    { acao: 'mover-setor', rotulo: 'Mover', cor: 'var(--roxo)', icone: 'M3 12l9-9 9 9M5 10v10h14V10' },
-    { acao: 'venda', rotulo: 'Venda', cor: 'var(--destructive)', icone: 'M9 12l2 2 4-5M21 12c-1 5-5 8-9 10-4-2-8-5-9-10V5l9-3 9 3z' },
-    { acao: 'editar', rotulo: 'Editar', cor: 'var(--tint)', icone: 'M17 3l4 4L8 20l-5 1 1-5z' },
-    { acao: 'historico', rotulo: 'Histórico', cor: 'var(--tint)', icone: 'M12 7v5l3 3M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0z' },
-  ];
+  /* primeiro monte da seleção — base dos formulários e do título do sheet de edição */
+  const primeiroSelecionado = () => montesConhecidos().find((m) => m.id === [...selecionados][0]);
+  const monteAlvo = primeiroSelecionado();
 
   return (
     <div className="min-h-dvh bg-background">
@@ -441,7 +465,7 @@ export default function PaginaEstoqueChumbo() {
                 ligaId === l.id ? 'border-[var(--tint)] bg-[var(--tint-soft)] text-[var(--tint)]' : 'border-transparent bg-[var(--card)]'
               }`}
             >
-              <span className="h-[11px] w-[11px] rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
+              <span className="h-[11px] w-[11px] rounded-full" style={{ backgroundColor: corLigaHex(l.cor) }} />
               {l.nome}
             </button>
           ))}
@@ -478,7 +502,7 @@ export default function PaginaEstoqueChumbo() {
             {/* lotes */}
             <div className="grid gap-3.5">
               {lotesComLiga.map((l) => {
-                const corHex = COR_LIGA_HEX[(l.liga.cor as CorLiga) ?? 'CINZA'];
+                const corHex = corLigaHex(l.liga.cor);
                 const stats = baldesDe(l.montes);
                 const pesoLote = l.peso_total_informado ?? l.montes.reduce((s, m) => s + (m.peso_exibido ?? 0), 0);
                 const aberto = expandidos.has(l.id);
@@ -487,7 +511,7 @@ export default function PaginaEstoqueChumbo() {
                     <button onClick={() => alternarExpandido(l.id)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-[var(--muted)]">
                       <span
                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[13px] font-extrabold"
-                        style={{ backgroundColor: corHex, color: (l.liga.cor as CorLiga) === 'AMARELO' ? '#1c1c1e' : '#fff' }}
+                        style={{ backgroundColor: corHex, color: l.liga.cor === 'AMARELO' ? '#1c1c1e' : '#fff' }}
                       >
                         {[...l.liga.nome].find((c) => /[0-9]/.test(c)) ?? 'L'}
                       </span>
@@ -663,7 +687,7 @@ export default function PaginaEstoqueChumbo() {
 
       {modal === 'acoes' && acaoAtiva && (
         <BottomSheet
-          titulo={acaoAtiva === 'reservar' ? 'Reservar monte' : acaoAtiva === 'mover-setor' ? 'Mover ao setor' : acaoAtiva === 'venda' ? 'Baixa / Venda' : `Editar monte ${letraLinha(montesConhecidos().find((m) => m.id === [...selecionados][0])?.linha ?? 1)}${montesConhecidos().find((m) => m.id === [...selecionados][0])?.coluna ?? 1}`}
+          titulo={acaoAtiva === 'reservar' ? 'Reservar monte' : acaoAtiva === 'mover-setor' ? 'Mover ao setor' : acaoAtiva === 'venda' ? 'Baixa / Venda' : monteAlvo ? `Editar monte ${letraLinha(monteAlvo.linha)}${monteAlvo.coluna}` : 'Editar monte'}
           onClose={() => setModal(null)}
         >
           {enviando && (
@@ -701,14 +725,19 @@ export default function PaginaEstoqueChumbo() {
                   {setoresEscopo.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
                 </select>
               </label>
+              {selecionados.size > 1 && (
+                <p className="px-4 py-1 text-[12px] font-medium" style={{ color: 'var(--laranja)' }}>
+                  Vários montes selecionados — cada monte sai inteiro, com peso pela média.
+                </p>
+              )}
               <label className="ios-field">
                 <span>Barras</span>
-                <input type="number" min={1} inputMode="numeric" value={formMover.qtd_barras}
+                <input type="number" min={1} inputMode="numeric" value={formMover.qtd_barras} disabled={selecionados.size > 1}
                   onChange={(e) => barrasChange('mover', e.target.value)} placeholder="Vazio = monte todo" />
               </label>
               <label className="ios-field">
                 <span>Peso (auto)</span>
-                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formMover.peso}
+                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formMover.peso} disabled={selecionados.size > 1}
                   onChange={(e) => setFormMover({ ...formMover, peso: e.target.value })} placeholder="Aut. pela média" />
               </label>
               <label className="ios-field">
@@ -732,14 +761,19 @@ export default function PaginaEstoqueChumbo() {
                 <span>Data</span>
                 <input type="date" value={formVenda.data} onChange={(e) => setFormVenda({ ...formVenda, data: e.target.value })} />
               </label>
+              {selecionados.size > 1 && (
+                <p className="px-4 py-1 text-[12px] font-medium" style={{ color: 'var(--laranja)' }}>
+                  Vários montes selecionados — baixa integral, com peso pela média.
+                </p>
+              )}
               <label className="ios-field">
                 <span>Barras</span>
-                <input type="number" min={1} inputMode="numeric" value={formVenda.qtd_barras}
+                <input type="number" min={1} inputMode="numeric" value={formVenda.qtd_barras} disabled={selecionados.size > 1}
                   onChange={(e) => barrasChange('venda', e.target.value)} placeholder="Vazio = tudo" />
               </label>
               <label className="ios-field">
                 <span>Peso (auto)</span>
-                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formVenda.peso}
+                <input type="number" min={0.01} step="0.01" inputMode="decimal" value={formVenda.peso} disabled={selecionados.size > 1}
                   onChange={(e) => setFormVenda({ ...formVenda, peso: e.target.value, pesoEditado: true })} placeholder="Aut. pela média — editável" />
               </label>
               <label className="ios-field">

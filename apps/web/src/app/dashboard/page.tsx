@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { consumir } from '@/lib/api/cliente';
 import { SinoNotificacoes } from '@/components/sino';
-import { ToggleTema, TabBar } from '@/components/ui';
+import { ToggleTema, TabBar, corLigaHex } from '@/components/ui';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 type ItemLiga = { id: number; nome: string; cor: string };
@@ -39,7 +38,6 @@ const ROTULO_FLUXO: Record<string, string> = {
 };
 
 const fmtPeso = (n: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(n);
-const corLigaHex = (c: string) => COR_LIGA_HEX[(c as CorLiga) ?? 'CINZA'];
 
 export default function PaginaDashboardChumbo() {
   const [ligas, setLigas] = useState<ItemLiga[] | null>(null);

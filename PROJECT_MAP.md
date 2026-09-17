@@ -38,10 +38,14 @@ Regras-chave:
 4. **RBAC**: `ADMIN` (tudo) e `OPERADOR` (futuro); guardas em `@/lib/auth/sessao` (autorização revalidada no backend)
 5. **Configurações** (`/api/config/{ligas|setores|colaboradores|modelos-grade|polaridades}`): CRUD com auditoria, dupla validação (Zod compartilhado), bloqueio de desativação com vínculos
 6. **Health**: `/api/health` (sem banco), `/api/health/ready` (com banco)
+7. **Chumbo — Entrada** (`POST /api/lead/lots`): lote + montes + movimentações ENTRADA em transação; peso estimado RF-P01; duplicidade de código 409
+8. **Chumbo — Estoque/Ações** (`GET /api/lead/stock`, `POST /api/lead/actions`, `PATCH /api/lead/piles/[id]`, `PATCH /api/lead/lots/[id]`): saldos RF-S07, reservar/cancelar/mover/venda/editar/reposicionar/redimensionar, reconciliação RF-P02..P07; **multi-monte sempre integral** — peso/barras só com 1 monte selecionado (UI bloqueia e API rejeita com 400)
+9. **Contagem diária** (`GET+POST /api/lead/counts`): apontamentos com **local (setor)**, totais por liga × sistema (estoque+setores), revisão persistente (RF-CT05), resumo de dias (`?resumo=1`) para comparação
+10. **Dashboard/Relatórios/Notificações** (`/api/lead/dashboard`, `/api/lead/reports`, `/api/lead/notifications`): métricas com % pesado geral, XLSX/PDF com notificação, sino com badge
 
 ## Proteção de rotas
 
-- `src/proxy.ts` (Next 16 — substitui middleware): redireciona sem cookie de acesso → `/login`
+- `src/proxy.ts` (Next 16 — substitui middleware): redireciona para `/login` somente sem access válido **E** sem cookie de refresh — com refresh válido a página carrega e o cliente renova a sessão na 1ª chamada de API (`lib/api/cliente`), evitando logout falso quando só o access (15min) expirou
 - APIs verificam sessão em cada rota (`exigirSessao` / `exigirAdmin`)
 
 ## Estrutura
@@ -49,18 +53,25 @@ Regras-chave:
 ```
 apps/web/src/
 ├── app/                  # rotas (App Router)
-│   ├── api/              # auth/*, config/*, health*
+│   ├── api/              # auth/*, config/*, health*, lead/* (lots, stock, actions, piles, counts, dashboard, reports, notifications)
 │   ├── login/            # tela de login
+│   ├── chumbo/           # entrada, estoque, contagem (visual do protótipo iOS)
+│   ├── dashboard/        # dashboard do chumbo (Recharts)
+│   ├── relatorios/       # exportação XLSX/PDF com filtros
 │   ├── configuracoes/    # CRUDs base (abas)
-│   └── page.tsx          # menu principal
+│   ├── menu/             # tela "Mais" (análise, menu, sair)
+│   └── page.tsx          # / → redirect (dashboard/login)
 ├── lib/
 │   ├── auth/             # jwt, senha, sessão (cookies, rotação, RBAC)
-│   ├── api/              # erros padronizados PT-BR + cliente fetch
+│   ├── api/              # erros padronizados PT-BR + cliente fetch (401 → refresh)
+│   ├── chumbo/           # servico.ts — regras de domínio do módulo 1
+│   ├── relatorios/       # gerador.ts — XLSX/PDF
 │   ├── configuracoes/    # servico + rotas helpers
+│   ├── auditoria.ts      # registrarAuditoria (transacional)
 │   └── prisma.ts         # singleton PrismaClient
-├── components/
+├── components/           # ui (TabBar/FAB/BottomSheet/Toast/corLigaHex), sino, botao-sair
 └── proxy.ts              # guarda de rotas
-packages/shared/src/      # dominio.ts, auth.ts, configuracoes.ts (Zod)
+packages/shared/src/      # dominio (enums, cores, dataHojeLocal), auth, configuracoes, chumbo (Zod)
 ```
 
 ## Operações
@@ -87,10 +98,10 @@ packages/shared/src/      # dominio.ts, auth.ts, configuracoes.ts (Zod)
 | 10 — Chumbo: Estoque | ✅ | Saldos RF-S07, chips por liga, cards por lote, grade viva |
 | 11 — Chumbo: Ações | ✅ | Reservar/cancelar/mover/venda/editar; append-only; ordem da grade; RF-P04 |
 | 12 — Reconciliação | ✅ | RF-P02/P03/P05/P06 com movimentações RECONCILIACAO/AJUSTE |
-| 13 — Contagem diária | ✅ | /chumbo/contagem: apontamentos por liga/barras/lote/obs, totais com sistema (estoque+setores) + Revisar persistente (RF-CT01..CT05), histórico do dia editável só no dia atual; API /api/lead/counts |
+| 13 — Contagem diária | ✅ | /chumbo/contagem: apontamentos por liga/barras/**local (setor)**/obs, totais com sistema (estoque+setores) + Revisar persistente (RF-CT01..CT05), histórico do dia editável só no dia atual (fuso America/Sao_Paulo); API /api/lead/counts |
 | 14 — PWA offline-first | ⬜ pendente | Serwist + Dexie + fila idempotente |
 | 15 — Dashboard | ✅ | /dashboard: saldo por liga (stack), entradas×saídas, por setor, divergências de contagem, aging de lotes, % pesado por lote; filtros 7/30/90d + liga; Recharts; API /api/lead/dashboard |
-| 16 — Relatórios XLSX/PDF | ✅ parcial | /relatorios + /api/lead/reports: movimentações/saldo/contagens/divergências/vendas em XLSX (exceljs) e PDF (pdfmake 0.3 + Roboto); notificação interna ao gerar; fila pg-boss p/ pesados pendente |
+| 16 — Relatórios XLSX/PDF | ✅ parcial | /relatorios + /api/lead/reports: movimentações/saldo/contagens (com coluna Local por setor)/divergências/vendas em XLSX (exceljs) e PDF (pdfmake 0.3 + Roboto); notificação interna ao gerar; fila pg-boss p/ pesados pendente |
 | 17 — Notificações internas | ✅ | /api/lead/notifications (listar + marcar lida) + SinoNotificacoes (badge, sheet, link direto); criarNotificacao em relatórios |
 | 18–21 — Deploy local/Swarm/Tunnel/scripts | 🔁 substituídas | Vercel + Supabase (CI por push, envs secretas, HTTPS automático) |
 | 22 — Hardening final | ⬜ pendente | |
@@ -114,4 +125,6 @@ packages/shared/src/      # dominio.ts, auth.ts, configuracoes.ts (Zod)
 - [x] 2026-09-16 — **TabBar 5 posições + FAB + Sprints 15–17**: TabBar inferior redesign (Dashboard/Estoque/FAB ações rápidas com Entrada+Contagem/posição reservada/Configurações, safe-area bottom); tema via cookie (server lê cookie e seta data-theme — sem script inline, sem flash, fim do erro React do script); Sprint 17 Notificações (criarNotificacao + API + sino com badge/sheet nas headers); Sprint 16 Relatórios (4 relatórios em XLSX exceljs e PDF pdfmake 0.3 via createRequire — api/lead/reports, download datado + notificação + tela com filtros); Sprint 15 Dashboard (api/lead/dashboard: saldo por liga, entradas×saídas, por setor, divergências RF-CT05, aging, % pesado; UI com Recharts + filtros). E2E validado; correção de encoding em massa após scripts com Get-Content/Set-Content
 - [x] 2026-09-16 — **Encoding + landing**: respostaJson central (`application/json; charset=utf-8`) em todas as APIs; scan do repo sem U+FFFD/BOM (UTF-8 sem BOM); `<meta charSet="utf-8">` nativo do Next; Supabase UTF8 (sem alteração); Menu movido para `/menu` — `/` agora redireciona: logado → `/dashboard` (nova home), deslogado → `/login`; login client redireciona direto `/dashboard`
 - [x] 2026-09-16 — **Encoding definitivo**: detector amplo de mojibake (famílias `Ã`, `Â`, `â`, `ï`) revelou 31 linhas restantes (`â€"`→`—`, `â€¦`→`…`, `â†’`→`→`) no estoque/entrada/contagem/menu/serviço/gerador — reparadas com des-mojibake CP1252 recursivo (sem perda: rejeita camada que gere U+FFFD); repo 100% sem marcas, verificação LIMPA nas 8 telas servidas + banco (ligas/setores/usuarios/movimentações) sem strings corrompidas; APIs com `Content-Type: application/json; charset=utf-8` centralizado em `respostaJson`
+- [x] 2026-09-17 — **Visual do protótipo (visual → main `4c2529a`)**: telas estoque/entrada/contagem/mais no design iOS do protótipo (`prototipo-chumbo.html`); TabBar 5+FAB com "Mais" em `/menu`; contagem por local (`setor_id`, migration `20260917100000_contagem_local`); % pesado geral no dashboard; E2E validado
+- [x] 2026-09-17 — **Sprint de melhorias (local, branch `melhorias`)**: fix "Usu?rio" no relatório de contagens; **coluna "Local" (breakdown por setor) no relatório de contagens XLSX/PDF**; bloqueio de peso/barras em multi-seleção (UI desabilita + API rejeita 400); datas de negócio em `America/Sao_Paulo` via `dataHojeLocal` no shared (fim do bug 21h–00h em "só hoje"/defaults/revisão/relatório saldo); AJUSTE residual registrado 1× por lote; proxy libera com refresh válido (fim do logout falso após 15min); a11y/UX (Esc + role=dialog no BottomSheet, toast de falha parcial por liga, carga com guarda de sequência); organização (helper `corLigaHex`, dead code removido, `BotaoSair` variante linha, hoists, retornos diretos nos dispatchers); fail-fast `JWT_SECRET` em produção; PRD/PROJECT_MAP atualizados (fornecedor e lote da contagem removidos por decisão do cliente; actionbar substitui duplo clique)
 - [ ] Próximo passo pendente: **Sprint 14 — PWA Offline-First** (Serwist + Dexie + fila idempotente)

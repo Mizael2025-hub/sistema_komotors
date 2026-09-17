@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
+import { dataHojeLocal } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
-import { BottomSheet, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
+import { BottomSheet, corLigaHex, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
 import { SinoNotificacoes } from '@/components/sino';
 
 type ItemLiga = { id: number; nome: string; cor: string };
@@ -41,13 +41,13 @@ type DiaContagem = { data: string; total_barras: number; apontamentos: number };
 
 const dataBr = (iso: string) => (!iso ? '—' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
 const dataCurta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const hojeISO = () => new Date().toISOString().slice(0, 10);
-const diaDesc = (d: string) => (d === hojeISO() ? `Hoje · ${dataBr(d)}` : dataBr(d));
+/* "hoje" no fuso da fábrica — nunca UTC (RNF-07) */
+const diaDesc = (d: string) => (d === dataHojeLocal() ? `Hoje · ${dataBr(d)}` : dataBr(d));
 
 export default function PaginaContagemChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
   const [setores, setSetores] = useState<ItemSetor[]>([]);
-  const [data, setData] = useState(hojeISO());
+  const [data, setData] = useState(dataHojeLocal());
   const [contagem, setContagem] = useState<Contagem | null>(null);
 
   const [ligaForm, setLigaForm] = useState<number | ''>('');
@@ -94,7 +94,7 @@ export default function PaginaContagemChumbo() {
     setCompContagem(null);
   }, [data, carregarContagem]);
 
-  const podeEditarDia = data === hojeISO();
+  const podeEditarDia = data === dataHojeLocal();
 
   /* breakdown por local dentro de cada liga */
   const locaisPorLiga = useMemo(() => {
@@ -240,10 +240,10 @@ export default function PaginaContagemChumbo() {
 
   function trocarData(v: string) {
     setData(v || data);
-    if (v && v !== hojeISO()) setAviso({ tipo: 'info', mensagem: 'Visualizando outro dia — somente leitura' });
+    if (v && v !== dataHojeLocal()) setAviso({ tipo: 'info', mensagem: 'Visualizando outro dia — somente leitura' });
   }
 
-  const subTopo = data === hojeISO() ? `Hoje · ${dataBr(data)}` : dataBr(data);
+  const subTopo = data === dataHojeLocal() ? `Hoje · ${dataBr(data)}` : dataBr(data);
 
   return (
     <div className="min-h-dvh bg-background">
@@ -260,7 +260,7 @@ export default function PaginaContagemChumbo() {
 
       <main className="mx-auto w-full max-w-[480px] pb-32 pt-1">
         {erro && (
-          <p role="alert" className="mx-4 mb-3 rounded-xl px-3 py-2 text-[13px] font-medium text-[var(--destructive)]" style={{ background: 'var(--destructive-soft, rgba(255,59,48,.12))' }}>{erro}</p>
+          <p role="alert" className="mx-4 mb-3 rounded-xl px-3 py-2 text-[13px] font-medium text-[var(--destructive)]" style={{ background: 'var(--destructive-soft)' }}>{erro}</p>
         )}
 
         {/* formulário do apontamento */}
@@ -280,7 +280,7 @@ export default function PaginaContagemChumbo() {
                   aria-pressed={ligaForm === l.id}
                   aria-label={l.nome}
                   className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
-                  style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }}
+                  style={{ backgroundColor: corLigaHex(l.cor) }}
                 />
               ))}
               {(ligasItens ?? []).length === 0 && (
@@ -348,7 +348,7 @@ export default function PaginaContagemChumbo() {
                     })}
                     className="flex w-full items-center gap-2.5 px-4 py-3 text-left active:bg-[var(--muted)]"
                   >
-                    <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(t.liga.cor as CorLiga) ?? 'CINZA'] }} />
+                    <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: corLigaHex(t.liga.cor) }} />
                     <b className="flex-1 text-[15px]">{t.liga.nome}</b>
                     <b className="text-[17px] font-extrabold">{t.apontado}</b>
                     <span className="w-[74px] text-right text-[12px] font-semibold text-[var(--muted-foreground)]">barras</span>
@@ -394,7 +394,7 @@ export default function PaginaContagemChumbo() {
                     const cor = dif === 0 ? 'var(--verde)' : dif > 0 ? 'var(--laranja)' : 'var(--destructive)';
                     return (
                       <div key={l.id} className="flex items-center gap-2.5 border-t border-[var(--border)] py-2 text-[13.5px]">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: corLigaHex(l.cor) }} />
                         <b className="w-[52px]">{l.nome}</b>
                         <span className="text-[var(--muted-foreground)]">{dataCurta(data)} <b className="text-[var(--foreground)]">{a}</b></span>
                         <span className="text-[var(--muted-foreground)]">{dataCurta(compAlvo)} <b className="text-[var(--foreground)]">{b}</b></span>
@@ -411,7 +411,7 @@ export default function PaginaContagemChumbo() {
             {/* caixa de divergência pós-revisão */}
             {revisado && (
               <div className="px-4 pb-3.5">
-                <div className="rounded-xl px-3.5 py-3" style={{ background: 'var(--destructive-soft, rgba(255,59,48,.12))' }}>
+                <div className="rounded-xl px-3.5 py-3" style={{ background: 'var(--destructive-soft)' }}>
                   <b className="text-[13px] text-[var(--destructive)]">⚠ Divergência encontrada</b>
                   {contagem.totais.map((t) => {
                     const dif = t.divergencia;
@@ -439,7 +439,7 @@ export default function PaginaContagemChumbo() {
           )}
           {(contagem?.apontamentos ?? []).map((a, i) => (
             <div key={a.id} className={`flex items-center gap-2.5 px-4 py-3 ${i > 0 ? 'border-t border-[var(--border)]' : ''}`}>
-              <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(a.liga.cor as CorLiga) ?? 'CINZA'] }} />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: corLigaHex(a.liga.cor) }} />
               <div className="min-w-0 flex-1">
                 <b className="block text-[15px]">{a.liga.nome}</b>
                 <div className="truncate text-[12.5px] font-medium text-[var(--muted-foreground)]">
@@ -458,7 +458,7 @@ export default function PaginaContagemChumbo() {
         </div>
 
         <p className="hint mx-7 mt-2 text-[12.5px] leading-snug text-[var(--muted-foreground)]">
-          Os locais (estoque, teleiras, usado, injetora, VRLA...) são cadastrados em Configurações → Setores — você adiciona conforme a necessidade.
+          Os locais disponíveis no campo Local são os setores cadastrados em Configurações → Setores — a lista aparece aqui automaticamente.
         </p>
         <div className="h-5" />
       </main>

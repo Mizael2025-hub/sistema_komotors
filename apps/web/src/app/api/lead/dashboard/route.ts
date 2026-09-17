@@ -102,7 +102,6 @@ export async function GET(request: Request) {
 
     /* aging de lotes: barras restantes × dias desde chegada (top 10) */
     const DISPONIVEIS = new Set(['EM_ESTOQUE', 'RESERVADO', 'PARCIAL']);
-    const pesadosSet = new Set(['EM_ESTOQUE', 'RESERVADO', 'PARCIAL', 'NO_SETOR']);
     const aging = lotes
       .map((l) => {
         const barrasRestantes = l.montes.filter((m) => DISPONIVEIS.has(m.status)).reduce((s, m) => s + m.qtd_barras, 0);
@@ -136,7 +135,6 @@ export async function GET(request: Request) {
       .filter((l) => l.percentual_pesado > 0)
       .sort((a, b) => b.percentual_pesado - a.percentual_pesado)
       .slice(0, 10);
-    void pesadosSet;
 
     /* percentual pesado geral (montes com peso_real / total de montes) */
     const totalMontes = lotes.reduce((s, l) => s + l.montes.length, 0);

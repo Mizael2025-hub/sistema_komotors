@@ -1,9 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { enviar, consumir } from '@/lib/api/cliente';
-import { BottomSheet, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
+import { BottomSheet, corLigaHex, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
 import { SinoNotificacoes } from '@/components/sino';
 
 type ItemLiga = { id: number; nome: string; cor: string; ativo: boolean };
@@ -123,10 +122,7 @@ export default function PaginaEntradaChumbo() {
     }
   }
 
-  const corHexLiga = (id: string) => {
-    const cor = ligas?.itens.find((l) => String(l.id) === id)?.cor;
-    return COR_LIGA_HEX[(cor as CorLiga) ?? 'CINZA'];
-  };
+  const corHexLiga = (id: string) => corLigaHex(ligas?.itens.find((l) => String(l.id) === id)?.cor ?? '');
 
   return (
     <div className="min-h-dvh bg-background">

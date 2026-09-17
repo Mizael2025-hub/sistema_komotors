@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   apontamentoContagemSchema,
+  dataHojeLocal,
   edicaoApontamentoSchema,
   excluirApontamentoSchema,
   revisarContagemSchema,
@@ -28,8 +29,6 @@ const MAPA = {
   revisar: revisarContagemSchema,
 } satisfies Record<string, z.ZodTypeAny>;
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
-
 export async function GET(request: Request) {
   const sessao = await exigirSessao();
   if (!sessao) return ERROS.naoAutenticado();
@@ -47,7 +46,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const data = url.searchParams.get('data') ?? hojeISO();
+  const data = url.searchParams.get('data') ?? dataHojeLocal();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return erro(400, 'Data invalida.', undefined, 'E_VALIDACAO');
 
   try {
@@ -79,12 +78,10 @@ export async function POST(request: Request) {
   if (!parsed.success) return ERROS.erroValidacao(parsed.error.issues);
 
   try {
-    let resultado;
-    if (acao === 'adicionar') resultado = await registrarApontamento(parsed.data as ApontamentoContagemInput, sessao);
-    else if (acao === 'editar') resultado = await editarApontamento(parsed.data as EdicaoApontamentoInput, sessao);
-    else if (acao === 'excluir') resultado = await excluirApontamento(parsed.data as ExcluirApontamentoInput, sessao);
-    else resultado = await revisarContagem(parsed.data as RevisarContagemInput, sessao);
-    return respostaJson(resultado);
+    if (acao === 'adicionar') return respostaJson(await registrarApontamento(parsed.data as ApontamentoContagemInput, sessao));
+    if (acao === 'editar') return respostaJson(await editarApontamento(parsed.data as EdicaoApontamentoInput, sessao));
+    if (acao === 'excluir') return respostaJson(await excluirApontamento(parsed.data as ExcluirApontamentoInput, sessao));
+    return respostaJson(await revisarContagem(parsed.data as RevisarContagemInput, sessao));
   } catch (ex) {
     if (ex instanceof RegraError) return erro(ex.status, ex.message, undefined, 'E_REGLA');
     return ERROS.erroInterno(ex);
