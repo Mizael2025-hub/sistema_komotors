@@ -31,6 +31,28 @@ export function BottomSheet({
   );
 }
 
+/* ---------- Toast estilo iOS (cápsula no topo) ---------- */
+export type ToastAviso = { tipo: 'ok' | 'warn' | 'info'; mensagem: string } | null;
+
+export function Toast({ aviso, aoSumir }: { aviso: ToastAviso; aoSumir: () => void }) {
+  useEffect(() => {
+    if (aviso == null) return;
+    const t = setTimeout(aoSumir, 2600);
+    return () => clearTimeout(t);
+  }, [aviso, aoSumir]);
+
+  if (aviso == null) return null;
+  const cor = aviso.tipo === 'ok' ? 'var(--verde)' : aviso.tipo === 'warn' ? 'var(--laranja)' : 'var(--tint)';
+  return (
+    <div className="ios-toast" role="status">
+      <span className="t-ic" style={{ background: cor }}>
+        <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
+      </span>
+      <span>{aviso.mensagem}</span>
+    </div>
+  );
+}
+
 /* ---------- Tabs inferiores estilo iOS: 5 posições + FAB central ---------- */
 export function TabBar() {
   const pathname = usePathname();
@@ -38,12 +60,12 @@ export function TabBar() {
 
   const rota = pathname.replace(/\/$/, '');
 
-  const aba = (href: string, label: string, d: string) => {
+  const aba = (href: string, label: string, icone: ReactNode) => {
     const ativa = rota === href;
     return (
       <Link href={href} className={`flex flex-col items-center gap-0.5 pb-1 text-[10.5px] transition-colors ${ativa ? 'text-[var(--tint)] font-semibold' : 'text-[var(--muted-foreground)]'}`}>
-        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d={d} />
+        <svg viewBox="0 0 24 24" className={`h-[25px] w-[25px] ${ativa ? '-translate-y-0.5' : ''} transition-transform`} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {icone}
         </svg>
         {label}
       </Link>
@@ -53,13 +75,13 @@ export function TabBar() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-1/2 z-40 grid w-full max-w-3xl -translate-x-1/2 grid-cols-5 items-end justify-items-center border-t border-[var(--border)] bg-background/85 px-2 pt-2.5 backdrop-blur pb-[max(env(safe-area-inset-bottom),8px)]"
+        className="fixed bottom-0 left-1/2 z-40 grid w-full max-w-3xl -translate-x-1/2 grid-cols-5 items-end justify-items-center border-t border-[var(--border)] bg-[var(--card)]/88 px-2 pt-2 backdrop-blur pb-[max(env(safe-area-inset-bottom),10px)]"
       >
         {/* 1. Dashboard */}
-        {aba('/dashboard', 'Dashboard', 'M4 19h16M4 19V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14M10 11h4a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1zM18 8v11')}
+        {aba('/dashboard', 'Dashboard', <path d="M4 19h16M4 19V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14M10 11h4a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1zM18 8v11" />)}
 
         {/* 2. Estoque */}
-        {aba('/chumbo/estoque', 'Estoque', 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8')}
+        {aba('/chumbo/estoque', 'Estoque', <path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8" />)}
 
         {/* 3. FAB central de ação acelerada */}
         <button
@@ -72,11 +94,15 @@ export function TabBar() {
           </svg>
         </button>
 
-        {/* 4. posição reservada (estrutura de 5 colunas) */}
-        <span aria-hidden="true" />
+        {/* 4. Mais */}
+        {aba('/menu', 'Mais', <>
+          <circle cx="5" cy="12" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="19" cy="12" r="1.6" />
+        </>)}
 
         {/* 5. Configurações */}
-        {aba('/configuracoes', 'Config.', 'M12 15.5a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z')}
+        {aba('/configuracoes', 'Config.', <path d="M12 15.5a3.5 3.5 0 1 0 0-7a3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z" />)}
       </nav>
 
       {menuAcoes && (
@@ -127,9 +153,9 @@ export function ToggleTema() {
     <button
       onClick={alternar}
       aria-label="Alternar tema"
-      className="grid h-9 w-9 place-items-center rounded-full bg-[var(--muted)] transition-transform active:scale-90"
+      className="ios-icon-btn"
     >
-      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke={dark ? 'var(--laranja)' : 'var(--tint)'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" className="h-[20px] w-[20px]" fill="none" stroke={dark ? 'var(--laranja)' : 'var(--tint)'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         {dark ? (
           <>
             <circle cx="12" cy="12" r="4" />

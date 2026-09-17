@@ -1,14 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
-import { BottomSheet, TabBar, ToggleTema } from '@/components/ui';
-import { SinoNotificacoes } from '@/components/sino'
-
+import { BottomSheet, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
+import { SinoNotificacoes } from '@/components/sino';
 
 type ItemLiga = { id: number; nome: string; cor: string };
+type ItemSetor = { id: number; nome: string; ativo?: boolean };
 
 type Apontamento = {
   id: number;
@@ -16,6 +15,7 @@ type Apontamento = {
   liga: ItemLiga;
   qtd_barras: number;
   lote: { id: number; codigo: string } | null;
+  local: { id: number; nome: string } | null;
   observacao: string | null;
   divergencia_sistema: number | null;
   revisada_em: string | null;
@@ -37,27 +37,40 @@ type Contagem = {
   totais: TotalLiga[];
 };
 
+type DiaContagem = { data: string; total_barras: number; apontamentos: number };
+
 const dataBr = (iso: string) => (!iso ? '—' : `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
+const dataCurta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const hojeISO = () => new Date().toISOString().slice(0, 10);
+const diaDesc = (d: string) => (d === hojeISO() ? `Hoje · ${dataBr(d)}` : dataBr(d));
 
 export default function PaginaContagemChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
+  const [setores, setSetores] = useState<ItemSetor[]>([]);
   const [data, setData] = useState(hojeISO());
   const [contagem, setContagem] = useState<Contagem | null>(null);
-  const [lotesLiga, setLotesLiga] = useState<{ id: number; codigo: string }[]>([]);
 
-  const [leagueForm, setLigaForm] = useState<number | ''>('');
-  const [qtd, setQtd] = useState('');
-  const [loteId, setLoteId] = useState<number | ''>('');
+  const [ligaForm, setLigaForm] = useState<number | ''>('');
+  const [valor, setValor] = useState('');
+  const [localId, setLocalId] = useState('');
   const [observacao, setObservacao] = useState('');
 
   const [enviando, setEnviando] = useState(false);
+  const [ligasAbertas, setLigasAbertas] = useState<Set<number>>(new Set());
+  const [revisado, setRevisado] = useState(false);
+  const [comparando, setComparando] = useState(false);
+  const [diasLista, setDiasLista] = useState<DiaContagem[] | null>(null);
+  const [compAlvo, setCompAlvo] = useState<string | null>(null);
+  const [compContagem, setCompContagem] = useState<Contagem | null>(null);
+
   const [editando, setEditando] = useState<Apontamento | null>(null);
   const [editQtd, setEditQtd] = useState('');
+  const [editLocal, setEditLocal] = useState<number | ''>('');
   const [editObs, setEditObs] = useState('');
-  const [editLoteId, setEditLoteId] = useState<number | ''>('');
   const [erro, setErro] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<ToastAviso>(null);
+
+  const sumirToast = useCallback(() => setAviso(null), []);
 
   const carregarContagem = useCallback(async (dataISO: string) => {
     try {
@@ -69,25 +82,49 @@ export default function PaginaContagemChumbo() {
   }, []);
 
   useEffect(() => {
-     
     consumir<{ itens: ItemLiga[] }>('/api/config/ligas').then((r) => setLigasItens(r.itens ?? [])).catch(() => setLigasItens([]));
+    consumir<{ itens: ItemSetor[] }>('/api/config/setores').then((r) => setSetores((r.itens ?? []).filter((s) => s.ativo !== false))).catch(() => setSetores([]));
   }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga ao trocar data
     carregarContagem(data);
+    setRevisado(false);
+    setCompAlvo(null);
+    setCompContagem(null);
   }, [data, carregarContagem]);
 
-  useEffect(() => {
-    if (leagueForm == null || leagueForm === '') return;
-     
-    consumir<{ lotes: { id: number; codigo: string }[] }>(`/api/lead/stock?liga_id=${leagueForm}`)
-      .then((r) => setLotesLiga(r.lotes.map((l) => ({ id: l.id, codigo: l.codigo }))))
-      .catch(() => setLotesLiga([]));
-  }, [leagueForm]);
+  const podeEditarDia = data === hojeISO();
+
+  /* breakdown por local dentro de cada liga */
+  const locaisPorLiga = useMemo(() => {
+    const mapa = new Map<number, Map<string, number>>();
+    for (const a of contagem?.apontamentos ?? []) {
+      if (!mapa.has(a.liga.id)) mapa.set(a.liga.id, new Map());
+      const porLocal = mapa.get(a.liga.id)!;
+      const nome = a.local?.nome ?? 'Sem local';
+      porLocal.set(nome, (porLocal.get(nome) ?? 0) + a.qtd_barras);
+    }
+    return mapa;
+  }, [contagem]);
+
+  function pressionar(v: string) {
+    setValor((atual) => (atual.length >= 6 ? atual : atual + v));
+  }
+
+  function apagar() {
+    setValor((atual) => atual.slice(0, -1));
+  }
 
   async function adicionar() {
-    if (leagueForm === '' || qtd === '') return;
+    if (ligaForm === '') {
+      setAviso({ tipo: 'warn', mensagem: 'Escolha a liga' });
+      return;
+    }
+    if (valor === '') {
+      setAviso({ tipo: 'warn', mensagem: 'Digite as barras' });
+      return;
+    }
     setEnviando(true);
     setErro(null);
     try {
@@ -97,17 +134,16 @@ export default function PaginaContagemChumbo() {
           acao: 'adicionar',
           dados: {
             data,
-            liga_id: Number(leagueForm),
-            qtd_barras: Number(qtd),
-            lote_id: loteId === '' ? undefined : Number(loteId),
+            liga_id: Number(ligaForm),
+            qtd_barras: Number(valor),
+            setor_id: localId === '' ? undefined : Number(localId),
             observacao: observacao || undefined,
           },
         },
       });
-      setQtd('');
-      setLoteId('');
+      setValor('');
       setObservacao('');
-      setAviso('Apontamento registrado.');
+      setAviso({ tipo: 'ok', mensagem: 'Apontamento adicionado' });
       await carregarContagem(data);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao registrar apontamento.');
@@ -121,7 +157,8 @@ export default function PaginaContagemChumbo() {
     setErro(null);
     try {
       await enviar('/api/lead/counts', { metodo: 'POST', corpo: { acao: 'revisar', dados: { data } } });
-      setAviso('Revisão registrada.');
+      setRevisado(true);
+      setAviso({ tipo: 'warn', mensagem: 'Revisão concluída — confira as divergências' });
       await carregarContagem(data);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao revisar.');
@@ -136,7 +173,7 @@ export default function PaginaContagemChumbo() {
     setErro(null);
     try {
       await enviar('/api/lead/counts', { metodo: 'POST', corpo: { acao: 'excluir', dados: { apontamento_id: id } } });
-      setAviso('Apontamento excluído.');
+      setAviso({ tipo: 'info', mensagem: 'Apontamento excluído' });
       await carregarContagem(data);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao excluir apontamento.');
@@ -148,9 +185,8 @@ export default function PaginaContagemChumbo() {
   function abrirEditar(a: Apontamento) {
     setEditando(a);
     setEditQtd(String(a.qtd_barras));
+    setEditLocal(a.local ? a.local.id : '');
     setEditObs(a.observacao ?? '');
-    setEditLoteId(a.lote ? a.lote.id : '');
-    if (leagueForm !== a.liga.id) setLigaForm(a.liga.id);
   }
 
   async function salvarEdicao() {
@@ -165,13 +201,13 @@ export default function PaginaContagemChumbo() {
           dados: {
             apontamento_id: editando.id,
             qtd_barras: editQtd === '' ? undefined : Number(editQtd),
-            lote_id: editLoteId === '' ? null : Number(editLoteId),
+            setor_id: editLocal === '' ? null : Number(editLocal),
             observacao: editObs === '' ? null : editObs,
           },
         },
       });
       setEditando(null);
-      setAviso('Apontamento atualizado.');
+      setAviso({ tipo: 'ok', mensagem: 'Apontamento atualizado' });
       await carregarContagem(data);
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao editar apontamento.');
@@ -180,157 +216,256 @@ export default function PaginaContagemChumbo() {
     }
   }
 
-  const podeSalvar = leagueForm !== '' && qtd !== '' && Number(qtd) > 0 && !enviando;
-  const podeEditarDia = data === hojeISO();
+  async function abrirComparar() {
+    setComparando(true);
+    try {
+      const r = await consumir<{ dias: DiaContagem[] }>('/api/lead/counts?resumo=1&dias=30');
+      setDiasLista(r.dias ?? []);
+    } catch {
+      setDiasLista([]);
+    }
+  }
+
+  async function compararCom(alvo: string) {
+    setComparando(false);
+    setCompAlvo(alvo);
+    try {
+      const r = await consumir<Contagem>(`/api/lead/counts?data=${alvo}`);
+      setCompContagem(r);
+      setAviso({ tipo: 'ok', mensagem: 'Comparação atualizada' });
+    } catch {
+      setCompContagem(null);
+    }
+  }
+
+  function trocarData(v: string) {
+    setData(v || data);
+    if (v && v !== hojeISO()) setAviso({ tipo: 'info', mensagem: 'Visualizando outro dia — somente leitura' });
+  }
+
+  const subTopo = data === hojeISO() ? `Hoje · ${dataBr(data)}` : dataBr(data);
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-background/85 px-5 py-3 backdrop-blur">
+      <header className="ios-topbar">
         <div>
-          <h1 className="text-[15px] font-bold tracking-tight">Contagem de chumbo</h1>
-          <p className="text-[12px] text-[var(--muted-foreground)]">{dataBr(data)}</p>
+          <h1>Contagem</h1>
+          <div className="sub">{subTopo}</div>
         </div>
         <div className="flex items-center gap-2">
           <SinoNotificacoes />
           <ToggleTema />
-          <Link href="/menu" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
-            Menu
-          </Link>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-md px-4 pb-28 pt-4">
-        {erro && <p role="alert" className="mb-3 rounded-xl bg-[var(--destructive)]/10 px-3 py-2 text-[13px] font-medium text-[var(--destructive)]">{erro}</p>}
-        {aviso && <p className="mb-3 rounded-xl bg-[var(--verde-soft)] px-3 py-2 text-[13px] font-medium text-[var(--verde)]">{aviso}</p>}
+      <main className="mx-auto w-full max-w-[480px] pb-32 pt-1">
+        {erro && (
+          <p role="alert" className="mx-4 mb-3 rounded-xl px-3 py-2 text-[13px] font-medium text-[var(--destructive)]" style={{ background: 'var(--destructive-soft, rgba(255,59,48,.12))' }}>{erro}</p>
+        )}
 
-        {/* form de apontamento (RF-CT01) */}
-        <div className="ios-card mb-4 p-4">
-          <p className="mb-3 text-[14px] font-bold">Apontar</p>
-          <div className="ios-group mb-3">
-            <div className="ios-field">
-              <span>Data</span>
-              <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="text-right" />
+        {/* formulário do apontamento */}
+        <div className="ios-group mx-4 mb-4">
+          <div className="ios-field">
+            <span>Data</span>
+            <input type="date" value={data} onChange={(e) => trocarData(e.target.value)} />
+          </div>
+          <div className="ios-field">
+            <span>Liga</span>
+            <div className="flex flex-1 justify-end gap-2">
+              {(ligasItens ?? []).map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => setLigaForm((atual) => (atual === l.id ? '' : l.id))}
+                  aria-pressed={ligaForm === l.id}
+                  aria-label={l.nome}
+                  className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
+                  style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }}
+                />
+              ))}
+              {(ligasItens ?? []).length === 0 && (
+                <span className="text-[13px] text-[var(--muted-foreground)]">Sem ligas cadastradas</span>
+              )}
             </div>
           </div>
-
-          <p className="mb-2 text-[12px] font-semibold text-[var(--muted-foreground)]">Liga</p>
-          <div className="mb-4 flex gap-2.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'none' }}>
-            {(ligasItens ?? []).map((l) => {
-              const ativa = leagueForm === l.id;
-              return (
-                <button key={l.id} onClick={() => {
-                  const nova = ativa ? '' : l.id;
-                  setLigaForm(nova);
-                  setLoteId('');
-                  if (nova === '') setLotesLiga([]);
-                }} aria-pressed={ativa}
-                  className="flex shrink-0 items-center gap-2 rounded-full border-[1.5px] px-4 py-2 text-[13.5px] transition-all active:scale-95"
-                  style={ativa
-                    ? { backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'], borderColor: 'transparent', color: (l.cor as CorLiga) === 'AMARELO' ? '#1c1c1e' : '#fff' }
-                    : { borderColor: 'var(--border)' }}>
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
-                  {l.nome}
-                </button>
-              );
-            })}
+          <div className="ios-field">
+            <span>Local</span>
+            <select value={localId} onChange={(e) => setLocalId(e.target.value)}>
+              <option value="">Escolha…</option>
+              {setores.map((s) => (
+                <option key={s.id} value={s.id}>{s.nome}</option>
+              ))}
+            </select>
           </div>
-
-          <div className="ios-group mb-3">
-            <div className="ios-field">
-              <span>Barras</span>
-              <input required value={qtd} onChange={(e) => setQtd(e.target.value.replace(/[^\d]/g, ''))}
-                inputMode="numeric" pattern="[0-9]*" placeholder="Ex.: 300" />
-            </div>
-            <div className="ios-field">
-              <span>Lote</span>
-              <select value={String(loteId)} onChange={(e) => setLoteId(e.target.value === '' ? '' : Number(e.target.value))} disabled={leagueForm === ''}>
-                <option value="">Opcional</option>
-                {lotesLiga.map((l) => (
-                  <option key={l.id} value={l.id}>{l.codigo}</option>
-                ))}
-              </select>
-            </div>
-            <div className="ios-field">
-              <span>Observação</span>
-              <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Opcional" />
-            </div>
+          <div className="ios-field">
+            <span>Observação</span>
+            <input value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Opcional — só se precisar" />
           </div>
-
-          <button onClick={adicionar} disabled={!podeSalvar}
-            className="ios-btn ios-btn-primario disabled:opacity-40 disabled:cursor-not-allowed">
-            {enviando ? 'Enviando…' : 'Adicionar'}
-          </button>
         </div>
 
-        {/* card de totais por liga (RF-CT02/CT03) */}
+        {/* teclado numérico */}
+        <div className="ios-card mx-4 mb-4">
+          <div className="ios-num-display">
+            <input readOnly inputMode="none" placeholder="0" value={valor} aria-label="Quantidade de barras" />
+          </div>
+          <div className="ios-numpad">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => (
+              <button key={n} type="button" onClick={() => pressionar(n)}>{n}</button>
+            ))}
+            <button type="button" className="wide" onClick={apagar}>Apagar</button>
+            <button type="button" onClick={() => pressionar('0')}>0</button>
+          </div>
+          <div className="px-4 pb-3.5">
+            <button onClick={adicionar} disabled={enviando} className="ios-btn ios-btn-primario disabled:opacity-40">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              {enviando ? 'Enviando…' : 'Adicionar apontamento'}
+            </button>
+          </div>
+        </div>
+
+        {/* totais por liga */}
         {contagem && contagem.totais.length > 0 && (
-          <div className="ios-card mb-4 p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[14px] font-bold">Totais por liga</p>
-              <button onClick={revisar} disabled={enviando}
-                className="rounded-[10px] bg-[var(--tint-soft)] px-3 py-1.5 text-[12px] font-semibold text-[var(--tint)] transition-transform active:scale-95 disabled:opacity-40">
-                Revisar
+          <div className="ios-card mb-4 mx-4 overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 py-3.5">
+              <span className="text-[15px] font-bold">Totais · {dataCurta(data)}</span>
+              <button onClick={revisar} disabled={enviando} className="st-badge st-estoque disabled:opacity-40">
+                Revisar ↗
               </button>
             </div>
-            <div className="grid gap-2">
-              {contagem.totais.map((t) => {
-                const dif = t.divergencia;
-                const destaque = dif !== 0;
-                return (
-                  <div key={t.liga.id} className="flex items-center gap-2.5 rounded-xl p-3" style={{ background: destaque ? 'var(--laranja-soft)' : 'var(--muted)' }}>
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(t.liga.cor as CorLiga) ?? 'CINZA'] }} />
-                    <span className="text-[13.5px] font-semibold">{t.liga.nome}</span>
-                    <span className="ml-auto text-right">
-                      <span className="block text-[15px] font-extrabold tracking-tight">{t.apontado} barras <span className="text-[11px] font-semibold text-[var(--muted-foreground)]">apontado</span></span>
-                      <span className="block text-[11.5px] font-semibold text-[var(--muted-foreground)]">
-                        sistema: {t.sistema}
-                        {destaque && <span className={`ml-1 font-bold ${dif > 0 ? 'text-[var(--laranja)]' : 'text-[var(--destructive)]'}`}>· dif {dif > 0 ? '+' : ''}{dif}</span>}
-                      </span>
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="ios-divider" />
+
+            {contagem.totais.map((t, i) => {
+              const aberta = ligasAbertas.has(t.liga.id);
+              const locais = [...(locaisPorLiga.get(t.liga.id) ?? new Map()).entries()];
+              return (
+                <div key={t.liga.id} className={i > 0 ? 'border-t border-[var(--border)]' : ''}>
+                  <button
+                    onClick={() => setLigasAbertas((prev) => {
+                      const copia = new Set(prev);
+                      if (copia.has(t.liga.id)) copia.delete(t.liga.id);
+                      else copia.add(t.liga.id);
+                      return copia;
+                    })}
+                    className="flex w-full items-center gap-2.5 px-4 py-3 text-left active:bg-[var(--muted)]"
+                  >
+                    <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(t.liga.cor as CorLiga) ?? 'CINZA'] }} />
+                    <b className="flex-1 text-[15px]">{t.liga.nome}</b>
+                    <b className="text-[17px] font-extrabold">{t.apontado}</b>
+                    <span className="w-[74px] text-right text-[12px] font-semibold text-[var(--muted-foreground)]">barras</span>
+                    <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 shrink-0 transition-transform ${aberta ? 'rotate-180' : ''}`} fill="none" stroke="var(--muted-foreground)" strokeWidth="2.4" strokeLinecap="round">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  {aberta && (
+                    <div className="px-4 pb-2">
+                      {locais.length ? locais.map(([loc, v]) => (
+                        <div key={loc} className="flex items-center py-1.5 pl-3 text-[13.5px]">
+                          <span className="flex-1 text-[var(--muted-foreground)]">{loc}</span>
+                          <b className="font-bold">{v}</b>
+                          <span className="ml-3 w-16 text-right text-[11.5px] text-[var(--muted-foreground)]">barras</span>
+                        </div>
+                      )) : (
+                        <p className="py-1.5 pl-3 text-[13px] text-[var(--muted-foreground)]">Sem apontamentos</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="px-4 pb-3.5 pt-1">
+              <button onClick={abrirComparar} className="ios-btn ios-btn-secundario" style={{ paddingTop: 11, paddingBottom: 11, fontSize: 15 }}>
+                <svg viewBox="0 0 24 24" style={{ width: 16, height: 16 }}><path d="M4 6h16M4 12h10M4 18h14M18 9l3 3-3 3" /></svg>
+                Comparar com outro dia
+              </button>
             </div>
-            {!podeEditarDia && <p className="mt-2 text-[11px] text-[var(--muted-foreground)]">Apontamentos só podem ser alterados no próprio dia.</p>}
+
+            {/* comparação com outro dia */}
+            {compAlvo && compContagem && (
+              <div className="px-4 pb-3.5">
+                <b className="mb-1.5 block text-[13px] text-[var(--muted-foreground)]">{diaDesc(data)} × {diaDesc(compAlvo)}</b>
+                {(() => {
+                  const ligasUnion = new Map<number, ItemLiga>();
+                  for (const t of [...contagem.totais, ...compContagem.totais]) ligasUnion.set(t.liga.id, t.liga);
+                  return [...ligasUnion.values()].map((l) => {
+                    const a = contagem.totais.find((t) => t.liga.id === l.id)?.apontado ?? 0;
+                    const b = compContagem.totais.find((t) => t.liga.id === l.id)?.apontado ?? 0;
+                    const dif = a - b;
+                    const cor = dif === 0 ? 'var(--verde)' : dif > 0 ? 'var(--laranja)' : 'var(--destructive)';
+                    return (
+                      <div key={l.id} className="flex items-center gap-2.5 border-t border-[var(--border)] py-2 text-[13.5px]">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(l.cor as CorLiga) ?? 'CINZA'] }} />
+                        <b className="w-[52px]">{l.nome}</b>
+                        <span className="text-[var(--muted-foreground)]">{dataCurta(data)} <b className="text-[var(--foreground)]">{a}</b></span>
+                        <span className="text-[var(--muted-foreground)]">{dataCurta(compAlvo)} <b className="text-[var(--foreground)]">{b}</b></span>
+                        <span className="ml-auto rounded-[9px] px-2.5 py-[3px] text-[11px] font-bold" style={{ background: `color-mix(in srgb, ${cor} 14%, transparent)`, color: cor }}>
+                          {dif === 0 ? 'igual' : `${dif > 0 ? '+' : '−'}${Math.abs(dif)} barras`}
+                        </span>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+
+            {/* caixa de divergência pós-revisão */}
+            {revisado && (
+              <div className="px-4 pb-3.5">
+                <div className="rounded-xl px-3.5 py-3" style={{ background: 'var(--destructive-soft, rgba(255,59,48,.12))' }}>
+                  <b className="text-[13px] text-[var(--destructive)]">⚠ Divergência encontrada</b>
+                  {contagem.totais.map((t) => {
+                    const dif = t.divergencia;
+                    const cor = dif === 0 ? 'var(--verde)' : 'var(--destructive)';
+                    return (
+                      <p key={t.liga.id} className="mt-1 text-[13.5px] text-[var(--muted-foreground)]">
+                        {t.liga.nome}: sistema <b className="text-[var(--foreground)]">{t.sistema}</b> · contado <b className="text-[var(--foreground)]">{t.apontado}</b>{' '}
+                        <b style={{ color: cor }}>{dif === 0 ? '✓ ok' : `${dif > 0 ? '+' : '−'}${Math.abs(dif)} barras`}</b>
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!podeEditarDia && <p className="px-4 pb-3.5 text-[11px] text-[var(--muted-foreground)]">Apontamentos só podem ser alterados no próprio dia.</p>}
           </div>
         )}
 
-        {/* histórico do dia (RF-CT02/CT04) */}
-        {contagem && contagem.apontamentos.length > 0 && (
-          <div className="ios-card p-4">
-            <p className="mb-3 text-[14px] font-bold">Histórico do dia · {contagem.apontamentos.length} apontamento(s)</p>
-            <div className="grid gap-2">
-              {contagem.apontamentos.map((a) => {
-                const editavel = podeEditarDia;
-                return (
-                  <div key={a.id} className="ios-card-flat flex items-center gap-2.5 p-3">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(a.liga.cor as CorLiga) ?? 'CINZA'] }} />
-                    <div className="min-w-0">
-                      <p className="text-[13.5px] font-bold">{a.liga.nome} · {a.qtd_barras} barras{a.lote ? ` · ${a.lote.codigo}` : ''}</p>
-                      <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
-                        {a.usuario} · {new Date(a.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        {a.observacao ? ` · ${a.observacao}` : ''}
-                      </p>
-                    </div>
-                    {editavel && (
-                      <span className="ml-auto flex shrink-0 gap-1.5">
-                        <button onClick={() => abrirEditar(a)} className="rounded-[10px] bg-[var(--tint-soft)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--tint)]">Editar</button>
-                        <button onClick={() => excluirApontamento(a.id)} className="rounded-[10px] bg-[var(--destructive)]/10 px-2.5 py-1.5 font-semibold text-[var(--destructive)]">Excluir</button>
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+        {/* histórico do dia */}
+        <div className="ios-section-label">Apontamentos · {dataCurta(data)}</div>
+        <div className="ios-card mx-4 overflow-hidden">
+          {(contagem?.apontamentos ?? []).length === 0 && (
+            <p className="px-4 py-4.5 text-center text-[14px] text-[var(--muted-foreground)]">Nenhum apontamento neste dia</p>
+          )}
+          {(contagem?.apontamentos ?? []).map((a, i) => (
+            <div key={a.id} className={`flex items-center gap-2.5 px-4 py-3 ${i > 0 ? 'border-t border-[var(--border)]' : ''}`}>
+              <span className="h-[11px] w-[11px] shrink-0 rounded-full" style={{ backgroundColor: COR_LIGA_HEX[(a.liga.cor as CorLiga) ?? 'CINZA'] }} />
+              <div className="min-w-0 flex-1">
+                <b className="block text-[15px]">{a.liga.nome}</b>
+                <div className="truncate text-[12.5px] font-medium text-[var(--muted-foreground)]">
+                  {a.local?.nome ?? 'Sem local'}{a.observacao ? ` · ${a.observacao}` : ''}
+                </div>
+              </div>
+              <b className="text-[15px] font-bold">{a.qtd_barras}</b>
+              {podeEditarDia && (
+                <span className="flex shrink-0 gap-1.5">
+                  <button onClick={() => abrirEditar(a)} className="px-1 py-1 text-[13px] font-bold text-[var(--tint)]">Editar</button>
+                  <button onClick={() => excluirApontamento(a.id)} className="px-1 py-1 text-[13px] font-bold text-[var(--destructive)]">Excluir</button>
+                </span>
+              )}
             </div>
-          </div>
-        )}
-        {contagem && contagem.apontamentos.length === 0 && (
-          <p className="text-[13px] text-[var(--muted-foreground)]">Nenhum apontamento nesse dia.</p>
-        )}
+          ))}
+        </div>
+
+        <p className="hint mx-7 mt-2 text-[12.5px] leading-snug text-[var(--muted-foreground)]">
+          Os locais (estoque, teleiras, usado, injetora, VRLA...) são cadastrados em Configurações → Setores — você adiciona conforme a necessidade.
+        </p>
+        <div className="h-5" />
       </main>
 
+      {/* editar apontamento */}
       {editando && (
-        <BottomSheet titulo={`Editar apontamento · ${editando.liga.nome}`} onClose={() => setEditando(null)}>
+        <BottomSheet titulo={`Editar · ${editando.liga.nome}`} onClose={() => setEditando(null)}>
           <div className="ios-group mb-3">
             <div className="ios-field">
               <span>Barras</span>
@@ -338,11 +473,11 @@ export default function PaginaContagemChumbo() {
                 inputMode="numeric" pattern="[0-9]*" />
             </div>
             <div className="ios-field">
-              <span>Lote</span>
-              <select value={String(editLoteId)} onChange={(e) => setEditLoteId(e.target.value === '' ? '' : Number(e.target.value))}>
-                <option value="">Nenhum</option>
-                {lotesLiga.map((l) => (
-                  <option key={l.id} value={l.id}>{l.codigo}</option>
+              <span>Local</span>
+              <select value={String(editLocal)} onChange={(e) => setEditLocal(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Sem local</option>
+                {setores.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nome}</option>
                 ))}
               </select>
             </div>
@@ -352,12 +487,31 @@ export default function PaginaContagemChumbo() {
             </div>
           </div>
           <button onClick={salvarEdicao} disabled={enviando}
-            className="ios-btn ios-btn-primario disabled:opacity-40 disabled:cursor-not-allowed">
-            {enviando ? 'Aplicando⬦' : 'Salvar edição'}
+            className="ios-btn ios-btn-primario disabled:opacity-40">
+            {enviando ? 'Aplicando…' : 'Salvar edição'}
           </button>
         </BottomSheet>
       )}
 
+      {/* escolher dia para comparar */}
+      {comparando && (
+        <BottomSheet titulo="Escolher dia para comparar" onClose={() => setComparando(false)}>
+          {(diasLista ?? []).filter((d) => d.data !== data).length === 0 && (
+            <p className="px-4 py-4 text-center text-[14px] text-[var(--muted-foreground)]">Nenhum outro dia com contagem</p>
+          )}
+          {(diasLista ?? []).filter((d) => d.data !== data).map((d) => (
+            <button key={d.data} onClick={() => compararCom(d.data)} className="ios-field w-full text-left active:bg-[var(--muted)]">
+              <b className="flex-1 text-[16px]">{diaDesc(d.data)}</b>
+              <span className="text-right">
+                <b className="block text-[15px]">{d.total_barras} barras</b>
+                <span className="block text-[12px] text-[var(--muted-foreground)]">{d.apontamentos} apontamento(s)</span>
+              </span>
+            </button>
+          ))}
+        </BottomSheet>
+      )}
+
+      <Toast aviso={aviso} aoSumir={sumirToast} />
       <TabBar />
     </div>
   );

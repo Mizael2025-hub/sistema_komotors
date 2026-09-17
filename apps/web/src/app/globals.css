@@ -13,6 +13,7 @@
   --muted-foreground: #6c6c70;
   --border: rgba(60, 60, 67, 0.18);
   --destructive: #ff3b30;
+  --destructive-soft: rgba(255, 59, 48, 0.12);
 
   --tint: #0a84ff;
   --tint-soft: rgba(10, 132, 255, 0.12);
@@ -43,6 +44,7 @@ html[data-theme="dark"] {
   --muted-foreground: #98989f;
   --border: rgba(84, 84, 88, 0.55);
   --destructive: #ff453a;
+  --destructive-soft: rgba(255, 69, 58, 0.22);
 
   --tint-soft: rgba(10, 132, 255, 0.22);
   --verde-soft: rgba(48, 177, 78, 0.22);
@@ -163,9 +165,9 @@ body {
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 15px;
+  padding: 16px;
   border-radius: 12px;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   transition: transform 0.12s, opacity 0.2s;
 }
@@ -173,9 +175,18 @@ body {
   transform: scale(0.97);
   opacity: 0.85;
 }
-.ios-btn-primario { background: var(--tint); color: #fff; }
+.ios-btn-primario { background: var(--tint); color: #fff; box-shadow: 0 6px 18px rgba(10, 132, 255, 0.35); }
 .ios-btn-secundario { background: var(--muted); color: var(--tint); }
-.ios-btn-perigo { background: var(--destructive); color: #fff; }
+.ios-btn-perigo { background: var(--destructive); color: #fff; box-shadow: 0 6px 18px rgba(255, 59, 48, 0.3); }
+.ios-btn svg {
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 /* bottom sheet */
 .ios-sheet-backdrop {
@@ -230,5 +241,267 @@ body {
   height: 11px;
   border-radius: 3.5px;
   flex-shrink: 0;
+}
+
+/* ---------- Top bar grande estilo iOS (protótipo) ---------- */
+.ios-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 10px;
+  background: color-mix(in srgb, var(--background) 82%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.ios-topbar h1 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+.ios-topbar .sub {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+
+/* botão redondo de ícone */
+.ios-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--muted);
+  transition: transform 0.15s, background 0.2s;
+  flex-shrink: 0;
+}
+.ios-icon-btn:active {
+  transform: scale(0.9);
+  background: var(--muted-foreground);
+}
+.ios-icon-btn svg {
+  width: 20px;
+  height: 20px;
+  stroke: var(--tint);
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* rótulo de seção */
+.ios-section-label {
+  margin: 20px 28px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted-foreground);
+}
+
+/* ---------- Barra de ações flutuante (montes selecionados) ---------- */
+.ios-actionbar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  width: min(448px, calc(100% - 24px));
+  z-index: 45;
+  background: var(--card);
+  border-radius: 22px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 14px;
+  animation: ios-actionbar-up 0.35s cubic-bezier(0.2, 1.1, 0.3, 1);
+}
+@keyframes ios-actionbar-up {
+  from { transform: translate(-50%, 130%); }
+  to { transform: translate(-50%, 0); }
+}
+.ios-actionbar .info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+.ios-actionbar .info b { font-size: 15px; }
+.ios-actionbar .info span { font-size: 13px; color: var(--muted-foreground); font-weight: 600; }
+.ios-ab-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  font-size: 11.5px;
+  padding: 10px 4px;
+  flex: 1;
+  background: var(--muted);
+  color: var(--tint);
+  border-radius: 12px;
+  font-weight: 700;
+  transition: transform 0.12s;
+}
+.ios-ab-btn:active { transform: scale(0.93); }
+.ios-ab-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Numpad da contagem ---------- */
+.ios-num-display {
+  text-align: center;
+  padding: 6px 0 2px;
+}
+.ios-num-display input {
+  width: 170px;
+  font-size: 56px;
+  font-weight: 800;
+  text-align: center;
+  border: none;
+  background: transparent;
+  outline: none;
+  letter-spacing: -2px;
+  color: var(--tint);
+}
+.ios-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 8px 16px;
+}
+.ios-numpad button {
+  padding: 15px 0;
+  border-radius: 14px;
+  background: var(--muted);
+  font-size: 22px;
+  font-weight: 700;
+  transition: all 0.12s;
+}
+.ios-numpad button:active {
+  background: var(--muted-foreground);
+  transform: scale(0.95);
+}
+.ios-numpad button.wide {
+  grid-column: span 2;
+  font-size: 16px;
+  color: var(--destructive);
+}
+
+/* ---------- Toast ---------- */
+.ios-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top) + 8px);
+  z-index: 80;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  max-width: 90%;
+  animation: ios-toast-down 0.4s cubic-bezier(0.2, 1.2, 0.3, 1);
+}
+@keyframes ios-toast-down {
+  from { transform: translate(-50%, -90px); }
+  to { transform: translate(-50%, 0); }
+}
+.ios-toast .t-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.ios-toast .t-ic svg {
+  width: 14px;
+  height: 14px;
+  stroke: #fff;
+  fill: none;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Selos de status ---------- */
+.st-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+.st-estoque { background: var(--verde-soft); color: var(--verde); }
+.st-reserv { background: var(--laranja-soft); color: var(--laranja); }
+.st-setor { background: var(--roxo-soft); color: var(--roxo); }
+.st-parcial { background: var(--teal-soft); color: var(--teal); }
+.st-vendido { background: var(--muted); color: var(--muted-foreground); }
+
+/* ---------- Bolinhas de liga (contagem) ---------- */
+.dot-liga {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2.5px solid transparent;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.dot-liga.on {
+  border-color: var(--tint);
+  transform: scale(1.12);
+  box-shadow: 0 0 0 3px var(--tint-soft);
+}
+
+/* ---------- Ferramentas da grade ---------- */
+.ios-grade-tools {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.ios-grade-tools button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 10px;
+  background: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tint);
+  transition: transform 0.12s;
+}
+.ios-grade-tools button:active {
+  background: var(--muted-foreground);
+  transform: scale(0.95);
+}
+.ios-grade-tools svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+/* divisor fino */
+.ios-divider {
+  height: 0.5px;
+  background: var(--border);
+  margin: 2px 16px;
 }
 

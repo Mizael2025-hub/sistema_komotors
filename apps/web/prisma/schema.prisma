@@ -96,6 +96,7 @@ model setor {
   colaboradores colaborador[]
   reservas    monte_chumbo[]
   movimentacoes movimentacao_chumbo[]
+  contagens   contagem_chumbo[]
 }
 
 model colaborador {
@@ -206,6 +207,8 @@ model contagem_chumbo {
   qtd_barras           Int
   lote_id              Int?
   lote                 lote_chumbo? @relation(fields: [lote_id], references: [id])
+  setor_id             Int?
+  local                setor?       @relation(fields: [setor_id], references: [id])
   observacao           String?
   divergencia_sistema  Int?
   revisada_em          DateTime?
@@ -215,6 +218,7 @@ model contagem_chumbo {
 
   @@index([data, liga_id])
   @@index([usuario_id])
+  @@index([setor_id])
 }
 
 model token_refresh {

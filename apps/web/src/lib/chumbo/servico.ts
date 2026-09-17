@@ -722,6 +722,8 @@ export async function historicoMonte(monteId: number) {
     monte: {
       id: monte.id,
       status: monte.status,
+      linha: monte.linha,
+      coluna: monte.coluna,
       qtd_barras: monte.qtd_barras,
       peso_exibido: num(pesoExibidoDe(monte)),
       estimado: ehEstimado(monte),
@@ -765,6 +767,7 @@ async function apontamentosDoDia(dataISO: string) {
     include: {
       liga: { select: { id: true, nome: true, cor: true } },
       lote: { select: { id: true, codigo: true } },
+      local: { select: { id: true, nome: true } },
       usuario: { select: { nome_completo: true } },
     },
   });
@@ -818,6 +821,7 @@ export async function contagemDoDia(dataISO: string) {
       liga: { id: a.liga.id, nome: a.liga.nome, cor: a.liga.cor },
       qtd_barras: a.qtd_barras,
       lote: a.lote ? { id: a.lote.id, codigo: a.lote.codigo } : null,
+      local: a.local ? { id: a.local.id, nome: a.local.nome } : null,
       observacao: a.observacao,
       divergencia_sistema: a.divergencia_sistema,
       revisada_em: a.revisada_em,
@@ -839,12 +843,18 @@ export async function registrarApontamento(dados: ApontamentoContagemInput, sess
         if (!lote) throw new RegraError('O lote informado nao pertence a liga escolhida.', 400);
       }
 
+      if (dados.setor_id != null) {
+        const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
+        if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
+      }
+
       const criado = await tx.contagem_chumbo.create({
         data: {
           data: dataDe(dados.data),
           liga_id: dados.liga_id,
           qtd_barras: dados.qtd_barras,
           lote_id: dados.lote_id ?? null,
+          setor_id: dados.setor_id ?? null,
           observacao: dados.observacao ?? null,
           usuario_id: sessao.usuario_id,
         },
@@ -854,7 +864,7 @@ export async function registrarApontamento(dados: ApontamentoContagemInput, sess
         entidade: 'contagem_chumbo',
         entidade_id: criado.id,
         acao: 'CRIACAO',
-        dados_novos: { data: dados.data, liga_id: dados.liga_id, qtd_barras: dados.qtd_barras, lote_id: dados.lote_id ?? null, observacao: dados.observacao ?? null },
+        dados_novos: { data: dados.data, liga_id: dados.liga_id, qtd_barras: dados.qtd_barras, lote_id: dados.lote_id ?? null, setor_id: dados.setor_id ?? null, observacao: dados.observacao ?? null },
         usuario_id: sessao.usuario_id,
         cliente: tx,
       });
@@ -882,14 +892,21 @@ export async function editarApontamento(dados: EdicaoApontamentoInput, sessao: S
         if (ligaIdLote !== registro.liga_id) throw new RegraError('O lote informado nao pertence a liga do apontamento.', 400);
       }
 
+      if (dados.setor_id != null) {
+        const setor = await tx.setor.findFirst({ where: { id: dados.setor_id, ativo: true }, select: { id: true } });
+        if (!setor) throw new RegraError('Local (setor) invalido ou inativo.', 400);
+      }
+
       const anteriores = {
         qtd_barras: registro.qtd_barras,
         lote_id: registro.lote_id,
+        setor_id: registro.setor_id,
         observacao: registro.observacao,
       };
       const novos = {
         qtd_barras: dados.qtd_barras ?? registro.qtd_barras,
         lote_id: dados.lote_id === undefined ? registro.lote_id : dados.lote_id,
+        setor_id: dados.setor_id === undefined ? registro.setor_id : dados.setor_id,
         observacao: dados.observacao === undefined ? registro.observacao : dados.observacao,
       };
       // edição gera nova revisão — divergências anteriores ficam desatualizadas
@@ -898,7 +915,7 @@ export async function editarApontamento(dados: EdicaoApontamentoInput, sessao: S
         data: { ...novos, divergencia_sistema: null, revisada_em: null },
       });
 
-      const mudou = novos.qtd_barras !== anteriores.qtd_barras || novos.lote_id !== anteriores.lote_id || novos.observacao !== anteriores.observacao;
+      const mudou = novos.qtd_barras !== anteriores.qtd_barras || novos.lote_id !== anteriores.lote_id || novos.setor_id !== anteriores.setor_id || novos.observacao !== anteriores.observacao;
       if (mudou) {
         await registrarAuditoria({
           entidade: 'contagem_chumbo',
@@ -1010,4 +1027,27 @@ export async function revisarContagem(dados: RevisarContagemInput, sessao: Sessa
     if (ex instanceof RegraError) throw ex;
     throw ex;
   }
+}
+
+/* últimos N dias com contagem — usado pelo "Comparar com outro dia" */
+export async function resumoContagens(dias: number) {
+  const limite = new Date();
+  limite.setHours(0, 0, 0, 0);
+  limite.setDate(limite.getDate() - (dias - 1));
+
+  const grupos = await prisma.contagem_chumbo.groupBy({
+    by: ['data'],
+    where: { data: { gte: limite } },
+    _sum: { qtd_barras: true },
+    _count: { _all: true },
+    orderBy: { data: 'desc' },
+  });
+
+  return {
+    dias: grupos.map((g) => ({
+      data: dataISODe(g.data),
+      total_barras: g._sum.qtd_barras ?? 0,
+      apontamentos: g._count._all,
+    })),
+  };
 }

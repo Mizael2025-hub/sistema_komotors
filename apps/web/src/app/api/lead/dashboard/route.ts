@@ -138,6 +138,10 @@ export async function GET(request: Request) {
       .slice(0, 10);
     void pesadosSet;
 
+    /* percentual pesado geral (montes com peso_real / total de montes) */
+    const totalMontes = lotes.reduce((s, l) => s + l.montes.length, 0);
+    const totalPesados = lotes.reduce((s, l) => s + l.montes.filter((m) => m.peso_real != null).length, 0);
+
     return respostaJson({
       periodo_dias: dias,
       saldo_por_liga: ligas.map((l) => saldoPorLiga.get(l.id)),
@@ -146,6 +150,7 @@ export async function GET(request: Request) {
       divergencias: [...ultimaDiaLiga.values()],
       aging,
       pesado_por_lote: pesadoPorLote,
+      percentual_pesado_geral: totalMontes ? Math.round((totalPesados / totalMontes) * 100) : 0,
     });
   } catch (ex) {
     return ERROS.erroInterno(ex);

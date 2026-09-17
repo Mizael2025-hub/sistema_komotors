@@ -17,6 +17,7 @@ import {
   excluirApontamento,
   RegraError,
   registrarApontamento,
+  resumoContagens,
   revisarContagem,
 } from '@/lib/chumbo/servico';
 
@@ -34,6 +35,18 @@ export async function GET(request: Request) {
   if (!sessao) return ERROS.naoAutenticado();
 
   const url = new URL(request.url);
+
+  // resumo de dias com contagem — "Comparar com outro dia"
+  if (url.searchParams.get('resumo') === '1') {
+    const diasBruto = Number(url.searchParams.get('dias') ?? 30);
+    const dias = Number.isFinite(diasBruto) ? Math.min(Math.max(Math.trunc(diasBruto), 1), 90) : 30;
+    try {
+      return respostaJson(await resumoContagens(dias));
+    } catch (ex) {
+      return ERROS.erroInterno(ex);
+    }
+  }
+
   const data = url.searchParams.get('data') ?? hojeISO();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return erro(400, 'Data invalida.', undefined, 'E_VALIDACAO');
 
