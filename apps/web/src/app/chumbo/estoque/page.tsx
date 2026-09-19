@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { dataHojeLocal, type StatusMonte } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
@@ -36,8 +36,14 @@ type Lote = {
 type Estoque = {
   liga: { id: number; nome: string; cor: string };
   resumo: Record<'disponivel' | 'no_setor' | 'reservado' | 'vendido', { peso: number | null; barras: number }>;
-  setores: { id: number; nome: string }[];
   lotes: Lote[];
+};
+
+/* Passo A — o backend devolve tudo numa única chamada (ligas + setores + estoques). */
+type EstoqueCompleto = {
+  ligas: { id: number; nome: string; cor: string; ativo: boolean }[];
+  setores: { id: number; nome: string }[];
+  estoques: Estoque[];
 };
 
 type HistLinha = {
@@ -71,8 +77,11 @@ type Historico = {
   movimentacoes: HistLinha[];
 };
 
-type ItemLiga = { id: number; nome: string; cor: string };
+type ItemLiga = { id: number; nome: string; cor: string; ativo?: boolean };
 type LoteComLiga = Lote & { liga: ItemLiga };
+
+/* espelha DISPONIVEIS do servico.ts — usado para recalcular "encerrado" na UI otimista */
+const DISPONIVEIS_UI: StatusMonte[] = ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'];
 
 const ROTULO_STATUS: Record<StatusMonte, string> = {
   EM_ESTOQUE: 'Em estoque',
@@ -138,6 +147,36 @@ function baldesDe(ms: Monte[]) {
   };
 }
 
+/* ---------- Passo B: patches otimistas (espelham a matemática do servico.ts) ---------- */
+
+type PatchMonte = Partial<
+  Pick<Monte, 'status' | 'qtd_barras' | 'peso_exibido' | 'estimado' | 'setor_reserva_id' | 'linha' | 'coluna'>
+> & { id: number };
+
+/* espelha exercerFracaoMonte (servico.ts): peso proporcional pela média e
+   split PARCIAL quando move/vende só parte das barras */
+function calcMovimentoPatch(
+  m: Monte,
+  movidas: number | undefined,
+  pesoInf: number | undefined,
+  setor: number | null,
+  statusIntegral: 'NO_SETOR' | 'VENDIDO',
+): PatchMonte[] {
+  const total = m.qtd_barras;
+  const mov = Math.min(total, movidas ?? total);
+  const parcial = mov < total;
+  const pesoBase = m.peso_exibido;
+  let pesoMovido: number | null = null;
+  if (pesoInf != null) pesoMovido = Math.round(pesoInf * 100) / 100;
+  else if (pesoBase != null && total > 0) pesoMovido = Math.round(((pesoBase / total) * mov) * 100) / 100;
+
+  if (!parcial) {
+    return [{ id: m.id, status: statusIntegral, setor_reserva_id: statusIntegral === 'NO_SETOR' ? setor : null }];
+  }
+  const resto = pesoBase != null && pesoMovido != null ? Math.max(0, Math.round((pesoBase - pesoMovido) * 100) / 100) : null;
+  return [{ id: m.id, status: 'PARCIAL', qtd_barras: total - mov, ...(resto != null ? { peso_exibido: resto } : {}) }];
+}
+
 function classeCelula(m: Monte, selecionado: boolean) {
   const base = 'relative flex h-[92px] w-[88px] flex-col items-center justify-center gap-0.5 rounded-[14px] text-center leading-tight transition-all active:scale-95';
   let extra = ' border-2 border-solid bg-[var(--card)] shadow-[var(--sombra-card)]';
@@ -152,6 +191,7 @@ function classeCelula(m: Monte, selecionado: boolean) {
 export default function PaginaEstoqueChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
   const [estoques, setEstoques] = useState<Estoque[] | null>(null);
+  const [setores, setSetores] = useState<{ id: number; nome: string }[]>([]);
   const [ligaId, setLigaId] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<ToastAviso>(null);
@@ -176,30 +216,36 @@ export default function PaginaEstoqueChumbo() {
      antigas (a última carga concluída é a que vale) */
   const seqCarga = useRef(0);
 
+  const [, iniciarTransicao] = useTransition();
+
+  /* Passo A/B — uma única chamada devolve ligas + setores + estoques (antes:
+     1 chamada por liga + recarga total bloqueante após cada ação). */
   const carregarTudo = useCallback(async () => {
     const seq = ++seqCarga.current;
     setErro(null);
     try {
-      const r = await consumir<{ itens: ItemLiga[] }>('/api/config/ligas');
-      const itens = r.itens ?? [];
-      const resultados = await Promise.all(
-        itens.map((l) => consumir<Estoque>(`/api/lead/stock?liga_id=${l.id}`).catch(() => null)),
-      );
+      const r = await consumir<EstoqueCompleto>('/api/lead/stock');
       if (seq !== seqCarga.current) return; // chegou tarde — outra carga já assumiu
-      const validos = resultados.filter((e): e is Estoque => e != null);
-      setLigasItens(itens);
-      setEstoques(validos);
+      setLigasItens(r.ligas);
+      setSetores(r.setores);
+      setEstoques(r.estoques);
       // preserva os lotes que o usuário expandiu — a recarga não recolhe nada
-      setExpandidos((prev) => new Set([...prev].filter((x) => validos.some((e) => e.lotes.some((l) => l.id === x)))));
-      // falha parcial de liga não pode passar em silêncio — lotes sumiriam da vista
-      const falhas = resultados.length - validos.length;
-      if (falhas > 0) setAviso({ tipo: 'warn', mensagem: `${falhas} liga(s) não carregaram — toque no sincronizar` });
+      setExpandidos((prev) => new Set([...prev].filter((x) => r.estoques.some((e) => e.lotes.some((l) => l.id === x)))));
     } catch {
       if (seq !== seqCarga.current) return;
       setLigasItens([]);
+      setEstoques([]);
       setErro('Erro ao carregar estoque.');
     }
   }, []);
+
+  /* Passo B — revalidação em segundo plano: startTransition mantém a tela
+     interativa enquanto os dados frescos chegam (sem overlay, sem await). */
+  const revalidarEmFundo = useCallback(() => {
+    iniciarTransicao(async () => {
+      await carregarTudo();
+    });
+  }, [carregarTudo, iniciarTransicao]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial (setState pós-await)
@@ -212,8 +258,6 @@ export default function PaginaEstoqueChumbo() {
     const base = ligaId == null ? estoques : estoques.filter((e) => e.liga.id === ligaId);
     return base.flatMap((e) => e.lotes.map((l) => ({ ...l, liga: e.liga })));
   }, [estoques, ligaId]);
-
-  const setoresEscopo = useMemo(() => estoques?.[0]?.setores ?? [], [estoques]);
 
   const resumoEscopo = useMemo(() => baldesDe(lotesComLiga.flatMap((l) => l.montes)), [lotesComLiga]);
   const lotesAtivos = useMemo(
@@ -251,6 +295,27 @@ export default function PaginaEstoqueChumbo() {
   }
 
   const montesConhecidos = () => lotesComLiga.flatMap((l) => l.montes);
+
+  /* ---------- Passo B: UI otimista ---------- */
+
+  function aplicarPatches(patches: PatchMonte[]) {
+    if (patches.length === 0) return;
+    const ids = new Set(patches.map((p) => p.id));
+    setEstoques((atual) => {
+      if (atual == null) return atual;
+      return atual.map((e) => ({
+        ...e,
+        lotes: e.lotes.map((l) => {
+          if (!l.montes.some((m) => ids.has(m.id))) return l;
+          const montes = l.montes.map((m) => {
+            const p = patches.find((x) => x.id === m.id);
+            return p ? ({ ...m, ...p } as Monte) : m;
+          });
+          return { ...l, montes, encerrado: !montes.some((m) => DISPONIVEIS_UI.includes(m.status)) };
+        }),
+      }));
+    });
+  }
 
   function alternarSelecao(modo: Monte) {
     setSelecionados((prev) => {
@@ -320,9 +385,42 @@ export default function PaginaEstoqueChumbo() {
 
   async function executarAcao() {
     if (acaoAtiva == null || selecionados.size === 0) return;
+    const varios = selecionados.size > 1; // peso/barras só existem com 1 monte (RF-M03/M05)
+
+    /* Passo B — UI otimista: aplica em memória na hora, envia em paralelo e
+       revalida em segundo plano; erro reverte para o snapshot. */
+    const snapshot = estoques;
+    const patches: PatchMonte[] = [];
+    if (acaoAtiva === 'reservar') {
+      const setor = Number(formReserva.setor_id);
+      for (const m of itensSelecionados()) patches.push({ id: m.id, status: 'RESERVADO', setor_reserva_id: setor });
+    } else if (acaoAtiva === 'mover-setor') {
+      const setor = Number(formMover.setor_id);
+      const movidas = varios || formMover.qtd_barras === '' ? undefined : Number(formMover.qtd_barras);
+      const pesoInf = varios || formMover.peso === '' ? undefined : Number(formMover.peso);
+      for (const m of itensSelecionados()) patches.push(...calcMovimentoPatch(m, movidas, pesoInf, setor, 'NO_SETOR'));
+    } else if (acaoAtiva === 'venda') {
+      const movidas = varios || formVenda.qtd_barras === '' ? undefined : Number(formVenda.qtd_barras);
+      const pesoInf = varios || formVenda.peso === '' ? undefined : Number(formVenda.peso);
+      for (const m of itensSelecionados()) patches.push(...calcMovimentoPatch(m, movidas, pesoInf, null, 'VENDIDO'));
+    } else {
+      const alvo = primeiroSelecionado();
+      if (alvo)
+        patches.push({
+          id: alvo.id,
+          qtd_barras: formEditar.qtd_barras === '' ? alvo.qtd_barras : Number(formEditar.qtd_barras),
+          peso_exibido: formEditar.peso === '' ? alvo.peso_exibido : Number(formEditar.peso),
+        });
+    }
+
+    aplicarPatches(patches);
+    const rotulo = acaoAtiva === 'venda' ? 'Baixa/venda' : acaoAtiva === 'mover-setor' ? 'Movimento' : acaoAtiva === 'editar' ? 'Edição' : 'Reserva';
+    setModal(null);
+    setAcaoAtiva(null);
+    setSelecionados(new Set());
+    setAviso({ tipo: 'ok', mensagem: `${rotulo} registrado` });
     setEnviando(true);
     setErro(null);
-    const varios = selecionados.size > 1; // peso/barras só existem com 1 monte (RF-M03/M05)
     try {
       if (acaoAtiva === 'editar') {
         const monteId = [...selecionados][0];
@@ -363,27 +461,29 @@ export default function PaginaEstoqueChumbo() {
         }
         await enviar('/api/lead/actions', { metodo: 'POST', corpo: { acao: acaoAtiva, dados } });
       }
-      const rotulo = acaoAtiva === 'venda' ? 'Baixa/venda' : acaoAtiva === 'mover-setor' ? 'Movimento' : acaoAtiva === 'editar' ? 'Edição' : 'Reserva';
-      setModal(null);
-      setAcaoAtiva(null);
-      setSelecionados(new Set());
-      setAviso({ tipo: 'ok', mensagem: `${rotulo} registrado · sincronizado` });
-      await carregarTudo();
+      /* reconcilia estimativas e encerrados sem travar a tela */
+      revalidarEmFundo();
     } catch (ex) {
+      setEstoques(snapshot); // reverte a otimista
       setErro(ex instanceof Error ? ex.message : 'Erro na operação.');
-      await carregarTudo();
     } finally {
       setEnviando(false);
     }
   }
 
   async function expandirLote(l: LoteComLiga) {
+    const snapshot = estoques;
+    const novas = Math.min(20, l.colunas + 1);
+    // otimista: a grade cresce na hora
+    setEstoques(
+      (atual) => atual?.map((e) => ({ ...e, lotes: e.lotes.map((x) => (x.id === l.id ? { ...x, colunas: novas } : x)) })) ?? null,
+    );
     setErro(null);
     try {
-      await enviar(`/api/lead/lots/${l.id}`, { metodo: 'PATCH', corpo: { linhas: l.linhas, colunas: Math.min(20, l.colunas + 1) } });
+      await enviar(`/api/lead/lots/${l.id}`, { metodo: 'PATCH', corpo: { linhas: l.linhas, colunas: novas } });
       setAviso({ tipo: 'ok', mensagem: 'Grade expandida' });
-      await carregarTudo();
     } catch (ex) {
+      setEstoques(snapshot);
       setErro(ex instanceof Error ? ex.message : 'Erro ao expandir a grade.');
     }
   }
@@ -391,23 +491,25 @@ export default function PaginaEstoqueChumbo() {
   async function dragSolto(loteId: number, linha: number, coluna: number, maxL: number, maxC: number) {
     if (arrastando == null) return;
     if (linha > maxL || coluna > maxC) return;
+    const snapshot = estoques;
+    const monteId = arrastando;
+    // otimista: o monte salta para a nova posição na hora
+    aplicarPatches([{ id: monteId, linha, coluna }]);
+    setArrastando(null);
     setErro(null);
     try {
-      await enviar(`/api/lead/piles/${arrastando}`, { metodo: 'PATCH', corpo: { linha, coluna } });
+      await enviar(`/api/lead/piles/${monteId}`, { metodo: 'PATCH', corpo: { linha, coluna } });
       // mantém o modo reorganização ativo — permite mover vários montes sem pausas
-      setArrastando(null);
-      await carregarTudo();
     } catch (ex) {
+      setEstoques(snapshot); // reverte
       setErro(ex instanceof Error ? ex.message : 'Erro ao reposicionar.');
-      await carregarTudo();
-    } finally {
-      setArrastando(null);
     }
   }
 
-  async function sincronizar() {
-    await carregarTudo();
-    setAviso({ tipo: 'ok', mensagem: 'Tudo sincronizado' });
+  function sincronizar() {
+    // revalidação em segundo plano — a tela nunca trava
+    revalidarEmFundo();
+    setAviso({ tipo: 'info', mensagem: 'Sincronizando…' });
   }
 
   const statBalde = (rotulo: string, dado: Balde, extra?: { fundo: string; cor: string }) => (
@@ -456,7 +558,7 @@ export default function PaginaEstoqueChumbo() {
             <span className="h-[11px] w-[11px] rounded-full" style={{ background: 'linear-gradient(135deg,#ffcc00,#ff453a 50%,#1c1c1e 75%,#32d74b)' }} />
             Todas
           </button>
-          {(ligasItens ?? []).map((l) => (
+          {(ligasItens ?? []).filter((l) => l.ativo !== false).map((l) => (
             <button
               key={l.id}
               onClick={() => trocarLiga(l.id)}
@@ -690,19 +792,13 @@ export default function PaginaEstoqueChumbo() {
           titulo={acaoAtiva === 'reservar' ? 'Reservar monte' : acaoAtiva === 'mover-setor' ? 'Mover ao setor' : acaoAtiva === 'venda' ? 'Baixa / Venda' : monteAlvo ? `Editar monte ${letraLinha(monteAlvo.linha)}${monteAlvo.coluna}` : 'Editar monte'}
           onClose={() => setModal(null)}
         >
-          {enviando && (
-            <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-              <p className="rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-semibold text-[var(--background)]">Aplicando operação…</p>
-            </div>
-          )}
-
           {acaoAtiva === 'reservar' && (
             <div className="ios-group">
               <label className="ios-field">
                 <span>Setor de destino</span>
                 <select value={formReserva.setor_id} onChange={(e) => setFormReserva({ ...formReserva, setor_id: e.target.value })}>
                   <option value="">Escolha…</option>
-                  {setoresEscopo.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
+                  {setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
                 </select>
               </label>
               <label className="ios-field">
@@ -722,7 +818,7 @@ export default function PaginaEstoqueChumbo() {
                 <span>Setor</span>
                 <select value={formMover.setor_id} onChange={(e) => setFormMover({ ...formMover, setor_id: e.target.value })}>
                   <option value="">Escolha…</option>
-                  {setoresEscopo.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
+                  {setores.map((s) => (<option key={s.id} value={s.id}>{s.nome}</option>))}
                 </select>
               </label>
               {selecionados.size > 1 && (
