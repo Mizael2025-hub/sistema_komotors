@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { COR_LIGA, COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
+import { SinoNotificacoes } from '@/components/sino';
+import { TabBar, ToggleTema } from '@/components/ui';
 
 type ItemConfig = {
   id: number;
@@ -131,14 +132,18 @@ export default function PaginaConfiguracoes() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-5 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between">
-          <Link href="/menu" className="text-sm text-muted-foreground hover:text-foreground">← Menu</Link>
-          <span className="text-sm font-semibold">Configurações</span>
+      <header className="ios-topbar">
+        <div>
+          <h1>Configurações</h1>
+          <div className="sub">Cadastros do sistema</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <SinoNotificacoes />
+          <ToggleTema />
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-5 py-5">
+      <main className="mx-auto w-full max-w-[480px] px-4 pb-32 pt-1">
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
           {ABAS.map((t) => (
             <button
@@ -270,6 +275,8 @@ export default function PaginaConfiguracoes() {
           )}
         </ul>
       </main>
+
+      <TabBar />
     </div>
   );
 }

@@ -1,9 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { consumir, enviar } from '@/lib/api/cliente';
-import { BottomSheet } from '@/components/ui';
+import { Popover } from '@/components/ui';
 
 export type Notificacao = {
   id: number;
@@ -62,32 +61,29 @@ export function SinoNotificacoes() {
         )}
       </button>
 
-      {/* portal para <body>: renderizado dentro do header, o backdrop-filter do
-          .ios-topbar criava containing block e empurrava o sheet para fora da tela */}
-      {aberto &&
-        typeof document !== 'undefined' &&
-        createPortal(
-          <BottomSheet titulo={titulo} onClose={() => setAberto(false)}>
-            <div className="grid gap-2">
-              {itens.length === 0 && <p className="text-[13px] text-[var(--muted-foreground)]">Sem notificações.</p>}
-              {itens.map((n) => (
-                <button key={n.id} onClick={() => abrir(n.id, n.url)}
-                  className={`ios-card-flat flex items-start gap-3 p-3.5 text-left active:scale-[0.98] transition-transform ${n.lida ? 'opacity-60' : ''}`}>
-                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${n.lida ? 'bg-[var(--border)]' : 'bg-[var(--tint)]'}`} />
-                  <span className="min-w-0">
-                    <span className="block text-[14px] font-semibold">{n.titulo}</span>
-                    <span className="block truncate text-[12px] text-[var(--muted-foreground)]">{n.mensagem}</span>
-                    <span className="mt-0.5 block text-[10.5px] text-[var(--muted-foreground)]">
-                      {new Date(n.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                    </span>
+      {/* popover ancorado ao sino (canto superior direito) — o Primitivo
+          Popover cuida do portal (fora do header com backdrop-filter) */}
+      {aberto && (
+        <Popover titulo={titulo} onClose={() => setAberto(false)} posicaoClassName="fixed top-16 right-4 w-72 origin-top-right">
+          <div className="grid max-h-[60dvh] gap-1.5 overflow-y-auto p-1">
+            {itens.length === 0 && <p className="px-2 py-3 text-center text-[13px] text-[var(--muted-foreground)]">Sem notificações.</p>}
+            {itens.map((n) => (
+              <button key={n.id} onClick={() => abrir(n.id, n.url)}
+                className={`ios-card-flat flex items-start gap-3 p-3 text-left active:scale-[0.98] transition-transform ${n.lida ? 'opacity-60' : ''}`}>
+                <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${n.lida ? 'bg-[var(--border)]' : 'bg-[var(--tint)]'}`} />
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] font-semibold">{n.titulo}</span>
+                  <span className="block truncate text-[11.5px] text-[var(--muted-foreground)]">{n.mensagem}</span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--muted-foreground)]">
+                    {new Date(n.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </span>
-                  {n.url && <span className="ml-auto self-center text-[var(--muted-foreground)]">›</span>}
-                </button>
-              ))}
-            </div>
-          </BottomSheet>,
-          document.body,
-        )}
+                </span>
+                {n.url && <span className="ml-auto self-center text-[var(--muted-foreground)]">›</span>}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      )}
     </>
   );
 }

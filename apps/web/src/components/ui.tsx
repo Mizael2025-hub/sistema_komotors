@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { COR_LIGA_HEX, type CorLiga } from '@komotors/shared';
@@ -69,6 +70,54 @@ export function Toast({ aviso, aoSumir }: { aviso: ToastAviso; aoSumir: () => vo
   );
 }
 
+/* ---------- Popover estilo iOS (balão flutuante ancorado) ----------
+   Diferente do BottomSheet (painel fixo no rodapé), nasce ancorado ao botão
+   via `posicaoClassName` (ex: "fixed top-16 right-4 origin-top-right").
+   Portal no body evita cortes por overflow/containing block; backdrop
+   invisível fecha ao clicar fora. Animação fade+scale (.ios-pop) usa a
+   propriedade CSS `scale` (composta com translate do posicionamento). */
+export function Popover({
+  titulo,
+  onClose,
+  posicaoClassName,
+  children,
+}: {
+  titulo?: ReactNode;
+  onClose: () => void;
+  posicaoClassName: string;
+  children: ReactNode;
+}) {
+  /* fecha com Esc — mesmo comportamento do BottomSheet */
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [onClose]);
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <>
+      {/* backdrop invisível: captura clique-fora para fechar */}
+      <div className="fixed inset-0 z-[60]" onClick={onClose} aria-hidden />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`ios-pop z-[61] rounded-2xl border border-[var(--border)] bg-[var(--card)] p-2 shadow-[0_18px_50px_rgba(0,0,0,0.28)] ${posicaoClassName}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {titulo != null && (
+          <p className="px-2 pb-1 pt-1.5 text-[13px] font-bold tracking-tight text-[var(--muted-foreground)] uppercase">{titulo}</p>
+        )}
+        {children}
+      </div>
+    </>,
+    document.body,
+  );
+}
+
 /* ---------- Tabs inferiores estilo iOS: 5 posições + FAB central ---------- */
 export function TabBar() {
   const pathname = usePathname();
@@ -91,7 +140,7 @@ export function TabBar() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-1/2 z-40 grid w-full max-w-3xl -translate-x-1/2 grid-cols-5 items-end justify-items-center border-t border-[var(--border)] bg-[var(--card)]/88 px-2 pt-2 backdrop-blur pb-[max(env(safe-area-inset-bottom),10px)]"
+        className="fixed bottom-0 left-1/2 z-40 grid w-full max-w-[480px] -translate-x-1/2 grid-cols-5 items-end justify-items-center border-t border-[var(--border)] bg-[var(--card)]/88 px-2 pt-2 backdrop-blur pb-[max(env(safe-area-inset-bottom),10px)]"
       >
         {/* 1. Dashboard */}
         {aba('/dashboard', 'Dashboard', <path d="M4 19h16M4 19V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14M10 11h4a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1zM18 8v11" />)}
@@ -122,16 +171,16 @@ export function TabBar() {
       </nav>
 
       {menuAcoes && (
-        <BottomSheet titulo="Ações rápidas" onClose={() => setMenuAcoes(false)}>
-          <div className="grid gap-2.5">
-            <Link href="/chumbo/entrada" className="ios-card-flat flex items-center gap-3 p-4 active:scale-[0.98] transition-transform">
+        <Popover titulo="Ações rápidas" onClose={() => setMenuAcoes(false)} posicaoClassName="fixed bottom-24 left-1/2 -translate-x-1/2 w-64 origin-bottom">
+          <div className="grid gap-1.5 p-1">
+            <Link href="/chumbo/entrada" className="ios-card-flat flex items-center gap-3 p-3.5 active:scale-[0.98] transition-transform">
               <svg viewBox="0 0 24 24" className="h-[26px] w-[26px]" fill="none" stroke="var(--tint)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
               </svg>
               <span className="text-[15px] font-semibold">Entrada de Chumbo</span>
               <span className="ml-auto text-[var(--muted-foreground)]">›</span>
             </Link>
-            <Link href="/chumbo/contagem" className="ios-card-flat flex items-center gap-3 p-4 active:scale-[0.98] transition-transform">
+            <Link href="/chumbo/contagem" className="ios-card-flat flex items-center gap-3 p-3.5 active:scale-[0.98] transition-transform">
               <svg viewBox="0 0 24 24" className="h-[26px] w-[26px]" fill="none" stroke="var(--tint)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 11l3 3 8-8M21 12a9 9 0 1 1-3-6.7L21 7" />
               </svg>
@@ -139,7 +188,7 @@ export function TabBar() {
               <span className="ml-auto text-[var(--muted-foreground)]">›</span>
             </Link>
           </div>
-        </BottomSheet>
+        </Popover>
       )}
     </>
   );

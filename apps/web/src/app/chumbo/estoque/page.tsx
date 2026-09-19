@@ -179,9 +179,11 @@ function calcMovimentoPatch(
 
 function classeCelula(m: Monte, selecionado: boolean) {
   const base = 'relative flex h-[92px] w-[88px] flex-col items-center justify-center gap-0.5 rounded-[14px] text-center leading-tight transition-all active:scale-95';
-  let extra = ' border-2 border-solid bg-[var(--card)] shadow-[var(--sombra-card)]';
+  /* borda neutra padronizada (var(--border) — contraste nos dois temas);
+     a cor da liga não pinta mais os montes — identificação fica no card do lote */
+  let extra = ' border-2 border-solid border-[var(--border)] bg-[var(--card)] shadow-[var(--sombra-card)]';
   if (m.status === 'RESERVADO') extra += ' bg-[var(--laranja-soft)]';
-  if (m.status === 'NO_SETOR') extra += ' opacity-55 border-dashed';
+  if (m.status === 'NO_SETOR') extra += ' bg-[var(--roxo-soft)]';
   if (m.status === 'VENDIDO' || m.status === 'AJUSTADO') extra += ' opacity-[0.38] grayscale-[0.6]';
   if (m.status === 'PARCIAL') extra += ' border-dashed';
   if (selecionado) extra += ' outline outline-[3px] outline-offset-2 outline-[var(--tint)] scale-[1.04]';
@@ -410,6 +412,8 @@ export default function PaginaEstoqueChumbo() {
           id: alvo.id,
           qtd_barras: formEditar.qtd_barras === '' ? alvo.qtd_barras : Number(formEditar.qtd_barras),
           peso_exibido: formEditar.peso === '' ? alvo.peso_exibido : Number(formEditar.peso),
+          /* peso editado = pesagem real (RF-P02) — sai do estado "estimado" */
+          estimado: formEditar.peso === '' ? alvo.estimado : false,
         });
     }
 
@@ -595,7 +599,7 @@ export default function PaginaEstoqueChumbo() {
                 <span className="st-badge st-estoque">{lotesAtivos} {lotesAtivos === 1 ? 'lote ativo' : 'lotes ativos'}</span>
               </div>
               <div className="grid grid-cols-3 gap-2.5 px-4 pb-3.5">
-                {statBalde('Disponível', resumoEscopo.disponivel, { fundo: 'var(--verde-soft)', cor: 'var(--verde)' })}
+                {statBalde('Disponível', resumoEscopo.disponivel)}
                 {statBalde('No setor', resumoEscopo.no_setor, { fundo: 'var(--roxo-soft)', cor: 'var(--roxo)' })}
                 {statBalde('Reservado', resumoEscopo.reservado, { fundo: 'var(--laranja-soft)', cor: 'var(--laranja)' })}
               </div>
@@ -637,7 +641,7 @@ export default function PaginaEstoqueChumbo() {
                     {aberto && (
                       <div className="border-t border-[var(--border)] pt-3">
                         <div className="grid grid-cols-3 gap-2.5 px-4 pb-3.5">
-                          {statBalde('Disponível', stats.disponivel, { fundo: 'var(--verde-soft)', cor: 'var(--verde)' })}
+                          {statBalde('Disponível', stats.disponivel)}
                           {statBalde('Reservado', stats.reservado, { fundo: 'var(--laranja-soft)', cor: 'var(--laranja)' })}
                           {statBalde('No setor', stats.no_setor, { fundo: 'var(--roxo-soft)', cor: 'var(--roxo)' })}
                         </div>
@@ -698,17 +702,28 @@ export default function PaginaEstoqueChumbo() {
                                     draggable={!indisponivel}
                                     onDragStart={() => setArrastando(m.id)}
                                     className={classeCelula(m, reorganizando ? false : selecionados.has(m.id))}
-                                    style={{ borderColor: corHex }}
                                   >
                                     {reorganizando && arrastando == m.id && (
                                       <span className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-[var(--laranja)] text-[10px] font-bold text-white shadow">↦</span>
                                     )}
-                                    {m.peso_exibido != null ? (
-                                      <span className="whitespace-nowrap text-[15px] font-extrabold tracking-tight">{fmtNum(m.peso_exibido)}<span className="text-[10px] font-bold text-[var(--muted-foreground)]"> kg</span></span>
-                                    ) : (
-                                      <span className="text-[15px] font-extrabold">—</span>
-                                    )}
-                                    <span className="text-[11.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>
+                                    {(() => {
+                                      /* "No setor": texto no mesmo roxo do card de resumo
+                                         (var(--roxo) sobre --roxo-soft) — legível nos 2 temas,
+                                         sem texto branco/foreground no bloco */
+                                      const noSetor = m.status === 'NO_SETOR';
+                                      return (
+                                        <>
+                                          {m.peso_exibido != null ? (
+                                            <span className={`whitespace-nowrap text-[15px] font-extrabold tracking-tight ${noSetor ? 'text-[var(--roxo)]' : ''}`}>
+                                              {fmtNum(m.peso_exibido)}<span className={`text-[10px] font-bold ${noSetor ? 'text-[var(--roxo)]' : 'text-[var(--muted-foreground)]'}`}> kg</span>
+                                            </span>
+                                          ) : (
+                                            <span className={`text-[15px] font-extrabold ${noSetor ? 'text-[var(--roxo)]' : ''}`}>—</span>
+                                          )}
+                                          <span className={`text-[11.5px] font-semibold ${noSetor ? 'text-[var(--roxo)]' : 'text-[var(--muted-foreground)]'}`}>{m.qtd_barras} barras</span>
+                                        </>
+                                      );
+                                    })()}
                                     {m.estimado && <span className="absolute bottom-[5px] text-[9.5px] font-bold tracking-[0.3px] text-[var(--laranja)]">ESTIMADO</span>}
                                     {selecionados.has(m.id) && !reorganizando && (
                                       <span className="absolute -right-[7px] -top-[7px] grid h-[22px] min-w-[22px] place-items-center rounded-full bg-[var(--tint)] px-1 text-[11px] font-extrabold text-white shadow">✓</span>
@@ -727,8 +742,9 @@ export default function PaginaEstoqueChumbo() {
                         )}
 
                         <div className="ios-legend px-4 pb-3.5 pt-3">
-                          <div><i style={{ background: 'var(--verde-soft)', border: '1.5px solid var(--verde)' }} />Em estoque</div>
+                          <div><i style={{ background: 'var(--card)', border: '1.5px solid var(--border)' }} />Em estoque</div>
                           <div><i style={{ background: 'var(--laranja-soft)', border: '1.5px solid var(--laranja)' }} />Reservado</div>
+                          <div><i style={{ background: 'var(--roxo-soft)', border: '1.5px solid var(--roxo)' }} />No setor</div>
                           <div><i style={{ border: '2px dashed var(--teal)' }} />Parcial</div>
                           <div><i style={{ background: 'var(--muted)' }} />Vendido/movido</div>
                           <div><i style={{ border: '2px dashed var(--border)' }} />Vazio</div>
@@ -900,7 +916,7 @@ export default function PaginaEstoqueChumbo() {
                   onChange={(e) => setFormEditar({ ...formEditar, peso: e.target.value })} />
               </label>
               <p className="px-4 pb-3 pt-2 text-[12.5px] text-[var(--muted-foreground)]">
-                A edição reflete nos totais imediatamente e gera registro de auditoria.
+                Editar o peso registra a pesagem real e reajusta os estimados do lote (reconciliação); a edição gera registro de auditoria.
               </p>
             </div>
           )}

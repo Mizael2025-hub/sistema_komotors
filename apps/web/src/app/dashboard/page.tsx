@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { consumir } from '@/lib/api/cliente';
 import { SinoNotificacoes } from '@/components/sino';
 import { ToggleTema, TabBar, corLigaHex } from '@/components/ui';
@@ -63,21 +62,18 @@ export default function PaginaDashboardChumbo() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-background/85 px-5 py-3 backdrop-blur">
+      <header className="ios-topbar">
         <div>
-          <h1 className="text-[15px] font-bold tracking-tight">Dashboard do chumbo</h1>
-          <p className="text-[12px] text-[var(--muted-foreground)]">Métrica dos movimentos do estoque (RF-D01/RF-D02)</p>
+          <h1>Dashboard</h1>
+          <div className="sub">Métricas do chumbo (RF-D01/D02)</div>
         </div>
         <div className="flex items-center gap-2">
           <SinoNotificacoes />
           <ToggleTema />
-          <Link href="/menu" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
-            Menu
-          </Link>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-4 pb-28 pt-4">
+      <main className="mx-auto w-full max-w-[480px] px-4 pb-32 pt-4">
         {/* filtros (RF-D02): período + liga */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {[7, 30, 90].map((d) => (
