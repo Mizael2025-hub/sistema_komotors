@@ -65,74 +65,87 @@ export async function criarEntrada(dados: EntradaLoteInput, sessao: Sessao) {
   const dataChegada = dataISOparaDate(dados.data_chegada);
 
   try {
-    const lote = await prisma.$transaction(async (tx) => {
-      const duplicado = await tx.lote_chumbo.findUnique({ where: { codigo: dados.codigo }, select: { id: true } });
-      if (duplicado) throw new RegraError(`Ja existe lote "${dados.codigo}" cadastrado.`);
+    /* Passo C — inserção agrupada: createManyAndReturn + 2 createMany (antes
+       eram 3 queries SEQUENCIAIS por monte; com 8 montes a transação
+       estourava o timeout default de 5s — erro P2028). Timeout com folga. */
+    const lote = await prisma.$transaction(
+      async (tx) => {
+        const duplicado = await tx.lote_chumbo.findUnique({ where: { codigo: dados.codigo }, select: { id: true } });
+        if (duplicado) throw new RegraError(`Ja existe lote "${dados.codigo}" cadastrado.`);
 
-      const liga = await tx.liga_chumbo.findFirst({ where: { id: dados.liga_id, ativo: true } });
-      if (!liga) throw new RegraError('Liga de chumbo invalida ou inativa.', 400);
+        const liga = await tx.liga_chumbo.findFirst({ where: { id: dados.liga_id, ativo: true } });
+        if (!liga) throw new RegraError('Liga de chumbo invalida ou inativa.', 400);
 
-      const barrasTotais = dados.montes.reduce((s, m) => s + m.qtd_barras, 0);
-      const pesoPorBarra = dados.peso_total_informado != null ? new D(dados.peso_total_informado).div(barrasTotais) : null;
+        const barrasTotais = dados.montes.reduce((s, m) => s + m.qtd_barras, 0);
+        const pesoPorBarra = dados.peso_total_informado != null ? new D(dados.peso_total_informado).div(barrasTotais) : null;
 
-      const novoLote = await tx.lote_chumbo.create({
-        data: {
-          codigo: dados.codigo,
-          data_chegada: dataChegada,
-          liga_id: dados.liga_id,
-          fornecedor: dados.fornecedor,
-          peso_total_informado: dados.peso_total_informado != null ? new D(dados.peso_total_informado) : null,
-          total_barras: barrasTotais,
-          total_montes: dados.montes.length,
-          linhas: dados.linhas,
-          colunas: dados.colunas,
-        },
-      });
-
-      for (const m of dados.montes) {
-        const pesoReal = m.peso != null ? new D(m.peso) : null;
-        const pesoEstimado =
-          pesoReal == null && pesoPorBarra != null ? pesoPorBarra.mul(m.qtd_barras).toDecimalPlaces(2) : null;
-        const ordem = m.ordem_liberacao ?? (m.linha - 1) * dados.colunas + m.coluna;
-
-        const monte = await tx.monte_chumbo.create({
+        const novoLote = await tx.lote_chumbo.create({
           data: {
-            lote_id: novoLote.id,
-            linha: m.linha,
-            coluna: m.coluna,
-            ordem_liberacao: ordem,
-            qtd_barras: m.qtd_barras,
-            peso_real: pesoReal,
-            peso_estimado: pesoEstimado,
-            status: 'EM_ESTOQUE',
+            codigo: dados.codigo,
+            data_chegada: dataChegada,
+            liga_id: dados.liga_id,
+            fornecedor: dados.fornecedor,
+            peso_total_informado: dados.peso_total_informado != null ? new D(dados.peso_total_informado) : null,
+            total_barras: barrasTotais,
+            total_montes: dados.montes.length,
+            linhas: dados.linhas,
+            colunas: dados.colunas,
           },
         });
 
-        await tx.movimentacao_chumbo.create({
-          data: {
-            monte_id: monte.id,
+        const montesCriados = await tx.monte_chumbo.createManyAndReturn({
+          data: dados.montes.map((m) => {
+            const pesoReal = m.peso != null ? new D(m.peso) : null;
+            return {
+              lote_id: novoLote.id,
+              linha: m.linha,
+              coluna: m.coluna,
+              ordem_liberacao: m.ordem_liberacao ?? (m.linha - 1) * dados.colunas + m.coluna,
+              qtd_barras: m.qtd_barras,
+              peso_real: pesoReal,
+              peso_estimado:
+                pesoReal == null && pesoPorBarra != null ? pesoPorBarra.mul(m.qtd_barras).toDecimalPlaces(2) : null,
+              status: 'EM_ESTOQUE' as const,
+            };
+          }),
+        });
+
+        await tx.movimentacao_chumbo.createMany({
+          data: montesCriados.map((m) => ({
+            monte_id: m.id,
             lote_id: novoLote.id,
-            tipo: 'ENTRADA',
-            status_novo: 'EM_ESTOQUE',
+            tipo: 'ENTRADA' as const,
+            status_novo: 'EM_ESTOQUE' as const,
             qtd_barras: m.qtd_barras,
-            peso: pesoReal ?? pesoEstimado ?? null,
+            peso: m.peso_real ?? m.peso_estimado ?? null,
             data: dataChegada,
             usuario_id: sessao.usuario_id,
-          },
+          })),
         });
 
-        await registrarAuditoria({
-          entidade: 'monte_chumbo',
-          entidade_id: monte.id,
-          acao: 'CRIACAO',
-          dados_novos: monte,
-          usuario_id: sessao.usuario_id,
-          cliente: tx,
+        await tx.log_auditoria.createMany({
+          data: montesCriados.map((m) => ({
+            entidade: 'monte_chumbo',
+            entidade_id: m.id,
+            acao: 'CRIACAO' as const,
+            dados_novos: {
+              lote_id: m.lote_id,
+              linha: m.linha,
+              coluna: m.coluna,
+              ordem_liberacao: m.ordem_liberacao,
+              qtd_barras: m.qtd_barras,
+              peso_real: m.peso_real?.toString() ?? null,
+              peso_estimado: m.peso_estimado?.toString() ?? null,
+              status: m.status,
+            },
+            usuario_id: sessao.usuario_id,
+          })),
         });
-      }
 
-      return novoLote;
-    });
+        return novoLote;
+      },
+      { timeout: 15_000, maxWait: 10_000 },
+    );
 
     return lote;
   } catch (ex) {
@@ -146,30 +159,84 @@ export async function criarEntrada(dados: EntradaLoteInput, sessao: Sessao) {
 
 // ---------- SALDOS (RF-S07) ----------
 
-export async function estoqueLiga(ligaId: number) {
-  const liga = await prisma.liga_chumbo.findUnique({ where: { id: ligaId } });
-  if (!liga) throw new RegraError('Liga nao encontrada.', 404);
+type LoteEstoque = Prisma.lote_chumboGetPayload<{
+  include: {
+    montes: {
+      select: {
+        id: true;
+        linha: true;
+        coluna: true;
+        ordem_liberacao: true;
+        qtd_barras: true;
+        peso_real: true;
+        peso_estimado: true;
+        status: true;
+        setor_reserva_id: true;
+      };
+    };
+  };
+}>;
 
-  const lotes = await prisma.lote_chumbo.findMany({
-    where: { liga_id: ligaId },
-    orderBy: { data_chegada: 'desc' },
-    include: {
-      montes: {
-        select: {
-          id: true,
-          linha: true,
-          coluna: true,
-          ordem_liberacao: true,
-          qtd_barras: true,
-          peso_real: true,
-          peso_estimado: true,
-          status: true,
-          setor_reserva_id: true,
+type MovPorLiga = {
+  no_setor: { peso: number; barras: number };
+  vendido: { peso: number; barras: number };
+};
+
+/* Passo A — base única: 4 queries viajam JUNTAS num $transaction batchado
+   (antes: 5 queries × N ligas disparadas pela tela de estoque). */
+async function baseEstoque() {
+  const [ligas, lotes, movimentos, setores] = await prisma.$transaction([
+    prisma.liga_chumbo.findMany({ select: { id: true, nome: true, cor: true, ativo: true }, orderBy: { id: 'asc' } }),
+    prisma.lote_chumbo.findMany({
+      orderBy: { data_chegada: 'desc' },
+      include: {
+        montes: {
+          select: {
+            id: true,
+            linha: true,
+            coluna: true,
+            ordem_liberacao: true,
+            qtd_barras: true,
+            peso_real: true,
+            peso_estimado: true,
+            status: true,
+            setor_reserva_id: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.movimentacao_chumbo.groupBy({
+      by: ['lote_id', 'tipo'],
+      _sum: { qtd_barras: true, peso: true },
+      where: { tipo: { in: ['MOVIMENTO_SETOR', 'BAIXA_VENDA'] } },
+      orderBy: [{ lote_id: 'asc' }],
+    }),
+    prisma.setor.findMany({ where: { ativo: true }, select: { id: true, nome: true } }),
+  ]);
 
+  const ligaDoLote = new Map(lotes.map((l) => [l.id, l.liga_id]));
+  const movPorLiga = new Map<number, MovPorLiga>();
+  for (const g of movimentos) {
+    const ligaId = ligaDoLote.get(g.lote_id);
+    if (ligaId == null) continue;
+    const atual = movPorLiga.get(ligaId) ?? { no_setor: { peso: 0, barras: 0 }, vendido: { peso: 0, barras: 0 } };
+    const balde = g.tipo === 'MOVIMENTO_SETOR' ? atual.no_setor : atual.vendido;
+    balde.peso += num(g._sum?.peso) ?? 0;
+    balde.barras += g._sum?.qtd_barras ?? 0;
+    movPorLiga.set(ligaId, atual);
+  }
+
+  const lotesPorLiga = new Map<number, LoteEstoque[]>();
+  for (const l of lotes) {
+    const lista = lotesPorLiga.get(l.liga_id) ?? [];
+    lista.push(l);
+    lotesPorLiga.set(l.liga_id, lista);
+  }
+
+  return { ligas, lotesPorLiga, movPorLiga, setores };
+}
+
+function estoqueDeLiga(liga: { id: number; nome: string; cor: string }, lotes: LoteEstoque[], mov: MovPorLiga | undefined) {
   const montes = lotes.flatMap((l) => l.montes);
 
   let disponivelBarras = 0;
@@ -191,26 +258,14 @@ export async function estoqueLiga(ligaId: number) {
     if (p != null) pesoReservado = pesoReservado.plus(p);
   }
 
-  const noSetor = await prisma.movimentacao_chumbo.aggregate({
-    _sum: { qtd_barras: true, peso: true },
-    where: { tipo: 'MOVIMENTO_SETOR', lote: { liga_id: ligaId } },
-  });
-  const vendido = await prisma.movimentacao_chumbo.aggregate({
-    _sum: { qtd_barras: true, peso: true },
-    where: { tipo: 'BAIXA_VENDA', lote: { liga_id: ligaId } },
-  });
-
-  const setores = await prisma.setor.findMany({ where: { ativo: true }, select: { id: true, nome: true } });
-
   return {
     liga: { id: liga.id, nome: liga.nome, cor: liga.cor },
     resumo: {
       disponivel: { peso: num(pesoDisponivel), barras: disponivelBarras },
-      no_setor: { peso: num(noSetor._sum.peso ?? null), barras: noSetor._sum.qtd_barras ?? 0 },
+      no_setor: { peso: mov?.no_setor.peso ?? null, barras: mov?.no_setor.barras ?? 0 },
       reservado: { peso: reservados.length ? num(pesoReservado) : null, barras: reservadoBarras },
-      vendido: { peso: num(vendido._sum.peso ?? null), barras: vendido._sum.qtd_barras ?? 0 },
+      vendido: { peso: mov?.vendido.peso ?? null, barras: mov?.vendido.barras ?? 0 },
     },
-    setores,
     lotes: lotes.map((l) => {
       let barras = 0;
       let pesoLote = new D(0);
@@ -248,7 +303,27 @@ export async function estoqueLiga(ligaId: number) {
   };
 }
 
-export type EstoqueLiga = Prisma.PromiseReturnType<typeof estoqueLiga>;
+/* Estoque de todas as ligas numa única chamada — mata o N+1 do frontend. */
+export async function estoqueCompleto() {
+  const base = await baseEstoque();
+  return {
+    ligas: base.ligas.map((l) => ({ id: l.id, nome: l.nome, cor: l.cor, ativo: l.ativo })),
+    setores: base.setores,
+    estoques: base.ligas
+      .filter((l) => l.ativo)
+      .map((l) => estoqueDeLiga(l, base.lotesPorLiga.get(l.id) ?? [], base.movPorLiga.get(l.id))),
+  };
+}
+
+/* Retrocompatibilidade: ?liga_id= continua funcionando com o mesmo DTO. */
+export async function estoqueLiga(ligaId: number) {
+  const base = await baseEstoque();
+  const liga = base.ligas.find((l) => l.id === ligaId);
+  if (!liga) throw new RegraError('Liga nao encontrada.', 404);
+  return estoqueDeLiga(liga, base.lotesPorLiga.get(ligaId) ?? [], base.movPorLiga.get(ligaId));
+}
+
+export type EstoqueLiga = Awaited<ReturnType<typeof estoqueLiga>>;
 
 // ---------- MONTES / AÇÕES (RF-M01..M08, RF-P02..P06) ----------
 
