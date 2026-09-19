@@ -379,10 +379,10 @@ body {
   padding: 8px 16px;
 }
 .ios-numpad button {
-  padding: 15px 0;
-  border-radius: 14px;
+  padding: 11px 0;
+  border-radius: 12px;
   background: var(--muted);
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 700;
   transition: all 0.12s;
 }
@@ -390,10 +390,12 @@ body {
   background: var(--muted-foreground);
   transform: scale(0.95);
 }
-.ios-numpad button.wide {
-  grid-column: span 2;
-  font-size: 16px;
+.ios-numpad button.limpar {
+  font-size: 15px;
   color: var(--destructive);
+}
+.ios-numpad button.backspace {
+  color: var(--tint);
 }
 
 /* ---------- Toast ---------- */
@@ -456,7 +458,11 @@ body {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
   border: 2.5px solid transparent;
   transition: all 0.2s;
   cursor: pointer;
@@ -465,6 +471,10 @@ body {
   border-color: var(--tint);
   transform: scale(1.12);
   box-shadow: 0 0 0 3px var(--tint-soft);
+}
+/* bolinha escura (PRETO) fica invisível no tema escuro — anel claro ao redor */
+[data-theme="dark"] .dot-liga:not(.on) {
+  border-color: rgba(245, 245, 245, 0.38);
 }
 
 /* ---------- Ferramentas da grade ---------- */

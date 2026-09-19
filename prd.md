@@ -166,7 +166,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
   - ~~Fornecedor~~ — **removido em 2026-09-17** (decisão do cliente): todo lote é tratado como interno; a coluna permanece no banco com default (`OUTRO`) e não é mais coletada na interface.
   - **Peso total informado (opcional)** — usado quando a pesagem da remessa foi feita **em uma única vez**, sem peso individual por monte (ver RF-P01).
   - **Grade 2D pré-configurada com 2 linhas × 5 colunas**, expansível no momento do cadastro (adicionar/remover linhas e colunas conforme a posição física real).
-- **RF-E02** **Interação da grade na entrada** — a grade **não tem aparência de tabela**: cada célula é um **botão**. Ao tocar/clicar em uma célula na posição onde o chumbo fisicamente está, abre um **popup** com os campos **peso** e **quantidade de barras** daquele monte (e indicação da **ordem de armazenamento/sequência de liberação**, ver RF-E03). Células vazias permanecem limpas. Ao final do preenchimento, salvar cria o lote e um **monte por célula marcada**, todos com status `EM_ESTOQUE`.
+- **RF-E02** **Interação da grade na entrada** — a grade **não tem aparência de tabela**: cada célula é um **botão**. Ao tocar/clicar em uma célula na posição onde o chumbo fisicamente está, abre um **popup** com os campos **peso** e **quantidade de barras** daquele monte (e indicação da **ordem de armazenamento/sequência de liberação**, ver RF-E03). O peso do monte é **obrigatório** (exceto quando o `peso_total_informado` foi preenchido — nesse caso o campo já vem **pré-preenchido com a média por monte** (`peso_total ÷ nº de montes`) em destaque laranja itálico como "estimado pendente de pesagem real", ver RF-P01). Células vazias permanecem limpas. Ao final do preenchimento, salvar cria o lote e um **monte por célula marcada**, todos com status `EM_ESTOQUE`.
 - **RF-E03** **Ordem de liberação** — padrão derivado da posição na grade (**de cima para baixo, da esquerda para a direita**), editável no cadastro (sequência explícita). Usada ao liberar múltiplos montes (RF-M04).
 - **RF-E04** Cada lote possui **sua própria grade 2D** (linhas × colunas persistidas no lote, expansível posteriormente pela tela de estoque). A posição de cada monte é `(lote, linha, coluna)` — única por lote.
 - **RF-E05** Ao salvar a entrada: se `peso_total_informado` foi preenchido e os montes **não** foram pesados individualmente, cada monte nasce **sem peso real** e com **peso estimado** (RF-P01). Se os montes foram pesados individualmente, os pesos reais são gravados direto.
@@ -213,7 +213,7 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 > Este subsistema é **CRÍTICO**. Toda aritmética usa `Decimal` no servidor (nunca float).
 
 - **RF-P01** **Peso estimado na entrada** — quando o monte não é pesado individualmente na entrada e o lote tem `peso_total_informado`:
-  `peso_estimado = (peso_total_informado / barras_totais_do_lote) × barras_do_monte`, exibido com marcação visual de **"estimado"**.
+  `peso_estimado = (peso_total_informado / barras_totais_do_lote) × barras_do_monte`, exibido com marcação visual de **"estimado"**. Na entrada, o campo de peso do monte já vem **sugerido pela média por monte** (destacado em laranja itálico); se aceito sem edição, o valor sugerido **não é enviado** — o servidor grava o estimado pela fórmula acima (o real entra após a pesagem, RF-P02). *(comportamento atualizado em 2026-09-19)*
 - **RF-P02** **Peso real se torna autoritativo** — na primeira movimentação em que o monte é pesado de fato (mover/venda com peso informado), o peso real gravado se torna autoritativo para aquele monte.
 - **RF-P03** **Reconciliação do lote** — ao registrar o primeiro peso real de um monte do lote, o sistema **recalcula o peso estimado dos montes ainda não pesados** do mesmo lote:
   `peso_estimado_monte = ((peso_informado − Σ pesos_reais_já_registrados) / barras_restantes_não_pesadas) × barras_do_monte`,
@@ -1315,3 +1315,30 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [ ] Seed fake com cenários e datas variadas para demonstração.
 - [ ] `PROJECT_MAP.md` com Log de Execução atualizado; `docs/` em MKDocs com Mermaid.
 - [ ] Sem testes automatizados (requisito explícito); código simples, legível, ESLint/Prettier limpos.
+
+## 39. Diretrizes de Desenvolvimento
+
+### ⚠️ REGRAS ESTRITAS DE PERFORMANCE E ARQUITETURA (LEITURA OBRIGATÓRIA)
+
+Para manter a integridade da stack (Next.js + Prisma) e aplicar os princípios KISS e DRY de forma estrita, toda nova implementação ou alteração de código deve obrigatoriamente respeitar as seguintes restrições:
+
+**1. BANCO DE DADOS (PRISMA) - PROIBIDO N+1 E LOOPS DE ESCRITA:**
+- É expressamente proibido executar consultas (`findUnique`, `findFirst`, `findMany`) ou mutações (`create`, `update`, `delete`) dentro de loops (`.map`, `for`, `forEach`).
+- Para leituras de dados aninhados ou relacionados, construa uma única consulta global utilizando as cláusulas `include` ou `select`.
+- Para escritas múltiplas, utilize exclusivamente operações em lote (`createMany`, `updateMany`).
+- Se a operação envolver múltiplas etapas interligadas (ex: baixar lote, criar movimentação e gravar auditoria), agrupe tudo obrigatoriamente dentro de um `prisma.$transaction` e defina um `timeout` de segurança (ex: 15000ms) para evitar o erro `P2028`.
+
+**2. FRONTEND (NEXT.JS) - PROIBIDO CONGELAMENTO DE INTERFACE (UI BLOQUEANTE):**
+- Nunca utilize recargas completas e síncronas de dados (ex: `await carregarTudo()`) para atualizar a tela após uma mutação no banco de dados.
+- Toda ação de usuário que altera, move ou exclui dados deve aplicar Atualização Otimista (Optimistic UI) no estado local imediatamente, fornecendo feedback instantâneo.
+- Requisições ao backend, revalidações de cache (`router.refresh()`) e sincronizações devem ocorrer em segundo plano, encapsuladas dentro do hook `startTransition` do React. A interface (UI thread) nunca deve ser bloqueada aguardando o banco de dados.
+
+**3. VALIDAÇÃO DE LÓGICA E EFICIÊNCIA:**
+- Antes de sugerir a codificação de fluxos complexos, projete a lógica para garantir que o banco de dados será acionado o mínimo de vezes possível.
+- Evite blocos de captura de erro vazios. Toda falha em operações de banco de dados deve ser tratada e gerar um alerta visual no frontend.
+
+**4. MANUTENÇÃO CONTÍNUA DA DOCUMENTAÇÃO:**
+- Ao finalizar qualquer tarefa que resulte em alterações no código, é obrigatório atualizar imediatamente o arquivo `PROJECT_MAP.md`.
+- O mapa deve refletir o estado exato do sistema, documentando novos fluxos de lógica de negócio, novas ferramentas ou mudanças na arquitetura.
+- Atualize rigorosamente o "Log de Execução" no mapa, registrando o último passo concluído e definindo o próximo passo pendente.
+- Se a alteração modificar o escopo inicial, a estrutura de dados ou os requisitos de infraestrutura, atualize também o `PRD.md` para manter a paridade absoluta com o código-fonte.

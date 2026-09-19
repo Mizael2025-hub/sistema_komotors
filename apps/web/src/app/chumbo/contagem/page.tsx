@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { dataHojeLocal } from '@komotors/shared';
 import { consumir, enviar } from '@/lib/api/cliente';
 import { BottomSheet, corLigaHex, TabBar, ToggleTema, Toast, type ToastAviso } from '@/components/ui';
@@ -44,6 +44,23 @@ const dataCurta = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 /* "hoje" no fuso da fábrica — nunca UTC (RNF-07) */
 const diaDesc = (d: string) => (d === dataHojeLocal() ? `Hoje · ${dataBr(d)}` : dataBr(d));
 
+/* ---------- UI otimista: totais recalculados dos apontamentos locais ----------
+   "sistema/divergência" só o servidor conhece — preserva-se o valor da última
+   carga; a revalidação em segundo plano corrige logo em seguida. */
+function totaisDeApontamentos(anterior: Contagem | null, aps: Apontamento[]): TotalLiga[] {
+  const porLiga = new Map<number, TotalLiga>();
+  for (const a of aps) {
+    const previa = anterior?.totais.find((t) => t.liga.id === a.liga.id);
+    const t =
+      porLiga.get(a.liga.id) ??
+      { liga: a.liga, apontado: 0, sistema: previa?.sistema ?? 0, divergencia: previa?.divergencia ?? 0, revisada_em: null };
+    t.apontado += a.qtd_barras;
+    if (a.revisada_em && (!t.revisada_em || a.revisada_em > t.revisada_em)) t.revisada_em = a.revisada_em;
+    porLiga.set(a.liga.id, t);
+  }
+  return [...porLiga.values()].sort((a, b) => a.liga.id - b.liga.id);
+}
+
 export default function PaginaContagemChumbo() {
   const [ligasItens, setLigasItens] = useState<ItemLiga[] | null>(null);
   const [setores, setSetores] = useState<ItemSetor[]>([]);
@@ -81,6 +98,16 @@ export default function PaginaContagemChumbo() {
     }
   }, []);
 
+  const [, iniciarTransicao] = useTransition();
+
+  /* revalidação em segundo plano: startTransition mantém a tela interativa
+     enquanto o dado fresco chega (sem recarga bloqueante pós-ação) */
+  const revalidarEmFundo = useCallback(() => {
+    iniciarTransicao(async () => {
+      await carregarContagem(data);
+    });
+  }, [carregarContagem, data, iniciarTransicao]);
+
   useEffect(() => {
     consumir<{ itens: ItemLiga[] }>('/api/config/ligas').then((r) => setLigasItens(r.itens ?? [])).catch(() => setLigasItens([]));
     consumir<{ itens: ItemSetor[] }>('/api/config/setores').then((r) => setSetores((r.itens ?? []).filter((s) => s.ativo !== false))).catch(() => setSetores([]));
@@ -112,8 +139,12 @@ export default function PaginaContagemChumbo() {
     setValor((atual) => (atual.length >= 6 ? atual : atual + v));
   }
 
-  function apagar() {
+  function apagarUltimo() {
     setValor((atual) => atual.slice(0, -1));
+  }
+
+  function limparTudo() {
+    setValor('');
   }
 
   async function adicionar() {
@@ -125,10 +156,35 @@ export default function PaginaContagemChumbo() {
       setAviso({ tipo: 'warn', mensagem: 'Digite as barras' });
       return;
     }
+
+    /* UI otimista: insere o apontamento na hora com id temporário; o id real
+       chega na resposta e a revalidação em fundo traz o registro do servidor */
+    const snapshot = contagem;
+    const liga = ligasItens?.find((l) => l.id === Number(ligaForm));
+    const setor = setores.find((s) => String(s.id) === localId);
+    const novo: Apontamento = {
+      id: -Date.now(),
+      data,
+      liga: liga ?? { id: Number(ligaForm), nome: '—', cor: 'CINZA' },
+      qtd_barras: Number(valor),
+      lote: null,
+      local: setor ? { id: setor.id, nome: setor.nome } : null,
+      observacao: observacao || null,
+      divergencia_sistema: null,
+      revisada_em: null,
+      criado_em: new Date().toISOString(),
+      usuario: '',
+    };
+    setContagem((atual) => {
+      const base = atual ?? { data, apontamentos: [], totais: [] };
+      const aps = [...base.apontamentos, novo];
+      return { ...base, apontamentos: aps, totais: totaisDeApontamentos(atual, aps) };
+    });
+
     setEnviando(true);
     setErro(null);
     try {
-      await enviar('/api/lead/counts', {
+      const r = await enviar<{ id: number }>('/api/lead/counts', {
         metodo: 'POST',
         corpo: {
           acao: 'adicionar',
@@ -141,11 +197,16 @@ export default function PaginaContagemChumbo() {
           },
         },
       });
+      // troca o id temporário pelo real (habilita editar/excluir imediatamente)
+      setContagem((atual) =>
+        atual ? { ...atual, apontamentos: atual.apontamentos.map((a) => (a.id === novo.id ? { ...a, id: r.id } : a)) } : atual,
+      );
       setValor('');
       setObservacao('');
       setAviso({ tipo: 'ok', mensagem: 'Apontamento adicionado' });
-      await carregarContagem(data);
+      revalidarEmFundo();
     } catch (ex) {
+      setContagem(snapshot); // reverte a otimista
       setErro(ex instanceof Error ? ex.message : 'Erro ao registrar apontamento.');
     } finally {
       setEnviando(false);
@@ -156,10 +217,29 @@ export default function PaginaContagemChumbo() {
     setEnviando(true);
     setErro(null);
     try {
-      await enviar('/api/lead/counts', { metodo: 'POST', corpo: { acao: 'revisar', dados: { data } } });
+      const r = await enviar<{ data: string; divergencias: { liga: ItemLiga; apontado: number; sistema: number; divergencia: number }[] }>(
+        '/api/lead/counts',
+        { metodo: 'POST', corpo: { acao: 'revisar', dados: { data } } },
+      );
       setRevisado(true);
+      /* patch local exato a partir da resposta (o "sistema" só existe no
+         servidor) — sem segunda viagem de recarga */
+      const agora = new Date().toISOString();
+      setContagem((atual) =>
+        atual
+          ? {
+              ...atual,
+              totais: r.divergencias.map((d) => ({ ...d, revisada_em: agora })),
+              apontamentos: atual.apontamentos.map((a) => ({
+                ...a,
+                divergencia_sistema: r.divergencias.find((d) => d.liga.id === a.liga.id)?.divergencia ?? a.divergencia_sistema,
+                revisada_em: agora,
+              })),
+            }
+          : atual,
+      );
       setAviso({ tipo: 'warn', mensagem: 'Revisão concluída — confira as divergências' });
-      await carregarContagem(data);
+      revalidarEmFundo();
     } catch (ex) {
       setErro(ex instanceof Error ? ex.message : 'Erro ao revisar.');
     } finally {
@@ -169,13 +249,23 @@ export default function PaginaContagemChumbo() {
 
   async function excluirApontamento(id: number) {
     if (!confirm('Excluir este apontamento?')) return;
+
+    /* UI otimista: remove na hora; erro reverte o snapshot */
+    const snapshot = contagem;
+    setContagem((atual) => {
+      if (!atual) return atual;
+      const aps = atual.apontamentos.filter((a) => a.id !== id);
+      return { ...atual, apontamentos: aps, totais: totaisDeApontamentos(atual, aps) };
+    });
+
     setEnviando(true);
     setErro(null);
     try {
       await enviar('/api/lead/counts', { metodo: 'POST', corpo: { acao: 'excluir', dados: { apontamento_id: id } } });
       setAviso({ tipo: 'info', mensagem: 'Apontamento excluído' });
-      await carregarContagem(data);
+      revalidarEmFundo();
     } catch (ex) {
+      setContagem(snapshot);
       setErro(ex instanceof Error ? ex.message : 'Erro ao excluir apontamento.');
     } finally {
       setEnviando(false);
@@ -191,6 +281,28 @@ export default function PaginaContagemChumbo() {
 
   async function salvarEdicao() {
     if (!editando) return;
+
+    /* UI otimista: aplica a edição na hora; erro reverte o snapshot */
+    const snapshot = contagem;
+    const setor = setores.find((s) => s.id === Number(editLocal));
+    setContagem((atual) => {
+      if (!atual) return atual;
+      const aps = atual.apontamentos.map((a) =>
+        a.id === editando.id
+          ? {
+              ...a,
+              qtd_barras: editQtd === '' ? a.qtd_barras : Number(editQtd),
+              local: editLocal === '' ? null : setor ? { id: setor.id, nome: setor.nome } : null,
+              observacao: editObs === '' ? null : editObs,
+              divergencia_sistema: null,
+              revisada_em: null,
+            }
+          : a,
+      );
+      return { ...atual, apontamentos: aps, totais: totaisDeApontamentos(atual, aps) };
+    });
+    setEditando(null);
+
     setEnviando(true);
     setErro(null);
     try {
@@ -206,10 +318,10 @@ export default function PaginaContagemChumbo() {
           },
         },
       });
-      setEditando(null);
       setAviso({ tipo: 'ok', mensagem: 'Apontamento atualizado' });
-      await carregarContagem(data);
+      revalidarEmFundo();
     } catch (ex) {
+      setContagem(snapshot);
       setErro(ex instanceof Error ? ex.message : 'Erro ao editar apontamento.');
     } finally {
       setEnviando(false);
@@ -272,17 +384,19 @@ export default function PaginaContagemChumbo() {
           <div className="ios-field">
             <span>Liga</span>
             <div className="flex flex-1 justify-end gap-2">
-              {(ligasItens ?? []).map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setLigaForm((atual) => (atual === l.id ? '' : l.id))}
-                  aria-pressed={ligaForm === l.id}
-                  aria-label={l.nome}
-                  className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
-                  style={{ backgroundColor: corLigaHex(l.cor) }}
-                />
-              ))}
+            {(ligasItens ?? []).map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setLigaForm((atual) => (atual === l.id ? '' : l.id))}
+                aria-pressed={ligaForm === l.id}
+                aria-label={l.nome}
+                className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
+                style={{ backgroundColor: corLigaHex(l.cor), color: l.cor === 'AMARELO' ? '#1c1c1e' : '#fff' }}
+              >
+                {l.nome.match(/\d+/)?.[0] ?? l.id}
+              </button>
+            ))}
               {(ligasItens ?? []).length === 0 && (
                 <span className="text-[13px] text-[var(--muted-foreground)]">Sem ligas cadastradas</span>
               )}
@@ -312,8 +426,9 @@ export default function PaginaContagemChumbo() {
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => (
               <button key={n} type="button" onClick={() => pressionar(n)}>{n}</button>
             ))}
-            <button type="button" className="wide" onClick={apagar}>Apagar</button>
+            <button type="button" className="limpar" onClick={limparTudo} aria-label="Limpar tudo">C</button>
             <button type="button" onClick={() => pressionar('0')}>0</button>
+            <button type="button" className="backspace" onClick={apagarUltimo} aria-label="Apagar último dígito">⌫</button>
           </div>
           <div className="px-4 pb-3.5">
             <button onClick={adicionar} disabled={enviando} className="ios-btn ios-btn-primario disabled:opacity-40">

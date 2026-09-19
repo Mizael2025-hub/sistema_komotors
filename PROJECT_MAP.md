@@ -2,6 +2,31 @@
 
 > Módulo 1 do sistema "Baterias" (fábrica de baterias de motos). Fonte de verdade do PRD: `prd.md`.
 
+## ⚠️ REGRAS ESTRITAS DE PERFORMANCE E ARQUITETURA (LEITURA OBRIGATÓRIA)
+
+Para manter a integridade da stack (Next.js + Prisma) e aplicar os princípios KISS e DRY de forma estrita, toda nova implementação ou alteração de código deve obrigatoriamente respeitar as seguintes restrições:
+
+**1. BANCO DE DADOS (PRISMA) - PROIBIDO N+1 E LOOPS DE ESCRITA:**
+- É expressamente proibido executar consultas (`findUnique`, `findFirst`, `findMany`) ou mutações (`create`, `update`, `delete`) dentro de loops (`.map`, `for`, `forEach`).
+- Para leituras de dados aninhados ou relacionados, construa uma única consulta global utilizando as cláusulas `include` ou `select`.
+- Para escritas múltiplas, utilize exclusivamente operações em lote (`createMany`, `updateMany`).
+- Se a operação envolver múltiplas etapas interligadas (ex: baixar lote, criar movimentação e gravar auditoria), agrupe tudo obrigatoriamente dentro de um `prisma.$transaction` e defina um `timeout` de segurança (ex: 15000ms) para evitar o erro `P2028`.
+
+**2. FRONTEND (NEXT.JS) - PROIBIDO CONGELAMENTO DE INTERFACE (UI BLOQUEANTE):**
+- Nunca utilize recargas completas e síncronas de dados (ex: `await carregarTudo()`) para atualizar a tela após uma mutação no banco de dados.
+- Toda ação de usuário que altera, move ou exclui dados deve aplicar Atualização Otimista (Optimistic UI) no estado local imediatamente, fornecendo feedback instantâneo.
+- Requisições ao backend, revalidações de cache (`router.refresh()`) e sincronizações devem ocorrer em segundo plano, encapsuladas dentro do hook `startTransition` do React. A interface (UI thread) nunca deve ser bloqueada aguardando o banco de dados.
+
+**3. VALIDAÇÃO DE LÓGICA E EFICIÊNCIA:**
+- Antes de sugerir a codificação de fluxos complexos, projete a lógica para garantir que o banco de dados será acionado o mínimo de vezes possível.
+- Evite blocos de captura de erro vazios. Toda falha em operações de banco de dados deve ser tratada e gerar um alerta visual no frontend.
+
+**4. MANUTENÇÃO CONTÍNUA DA DOCUMENTAÇÃO:**
+- Ao finalizar qualquer tarefa que resulte em alterações no código, é obrigatório atualizar imediatamente o arquivo `PROJECT_MAP.md`.
+- O mapa deve refletir o estado exato do sistema, documentando novos fluxos de lógica de negócio, novas ferramentas ou mudanças na arquitetura.
+- Atualize rigorosamente o "Log de Execução" no mapa, registrando o último passo concluído e definindo o próximo passo pendente.
+- Se a alteração modificar o escopo inicial, a estrutura de dados ou os requisitos de infraestrutura, atualize também o `PRD.md` para manter a paridade absoluta com o código-fonte.
+
 ## Stack
 
 - **Monorepo** pnpm workspaces: `apps/web` (Next.js 16 App Router) · `packages/shared` (Zod + tipos de domínio)
@@ -128,4 +153,6 @@ packages/shared/src/      # dominio (enums, cores, dataHojeLocal), auth, configu
 - [x] 2026-09-17 — **Visual do protótipo (visual → main `4c2529a`)**: telas estoque/entrada/contagem/mais no design iOS do protótipo (`prototipo-chumbo.html`); TabBar 5+FAB com "Mais" em `/menu`; contagem por local (`setor_id`, migration `20260917100000_contagem_local`); % pesado geral no dashboard; E2E validado
 - [x] 2026-09-17 — **Sprint de melhorias (local, branch `melhorias`)**: fix "Usu?rio" no relatório de contagens; **coluna "Local" (breakdown por setor) no relatório de contagens XLSX/PDF**; bloqueio de peso/barras em multi-seleção (UI desabilita + API rejeita 400); datas de negócio em `America/Sao_Paulo` via `dataHojeLocal` no shared (fim do bug 21h–00h em "só hoje"/defaults/revisão/relatório saldo); AJUSTE residual registrado 1× por lote; proxy libera com refresh válido (fim do logout falso após 15min); a11y/UX (Esc + role=dialog no BottomSheet, toast de falha parcial por liga, carga com guarda de sequência); organização (helper `corLigaHex`, dead code removido, `BotaoSair` variante linha, hoists, retornos diretos nos dispatchers); fail-fast `JWT_SECRET` em produção; PRD/PROJECT_MAP atualizados (fornecedor e lote da contagem removidos por decisão do cliente; actionbar substitui duplo clique)
 - [x] 2026-09-19 — **Refatoração de desempenho do estoque (Passos A/B/C)**: (A) `estoqueCompleto` — 4 queries em UM `$transaction` batchado (ligas + lotes→montes + `groupBy` das movimentações + setores) matando o N+1 de 5 queries × N ligas por carga; `GET /api/lead/stock` sem parâmetro devolve tudo, `?liga_id=` mantido p/ retrocompat (relatórios usam); (B) tela do estoque com **UI otimista** — patches em memória (status/split PARCIAL com peso proporcional, posição, grade) + revalidação em segundo plano via `startTransition`, sem overlay bloqueante nem recarga total pós-ação, reversão a snapshot no erro; (C) `criarEntrada` com `createManyAndReturn` + 2 `createMany` (montes + movimentações ENTRADA + auditoria em lote JSON-safe) e transação com `timeout: 15s` — elimina o P2028 (antes 3 queries sequenciais × monte estouravam os 5s default com 8 montes)
+- [x] 2026-09-19 — **Correções de interface (feedback do cliente)**: painel de notificações fora da tela (o `backdrop-filter` do `.ios-topbar` criava containing block p/ o sheet `fixed` renderizado dentro do header — resolvido com `createPortal` no sino); contagem: bolinhas de liga com o **número da liga** centrado (dígito do nome, fallback `id`) + anel cinza-claro no tema escuro (PRETO invisível) e teclado menor (~25%) com última linha `C | 0 | ⌫` (C = limpa tudo, ⌫ = apaga dígito por dígito); entrada: peso por monte **obrigatório** sem `peso_total`; com `peso_total` o campo vem pré-preenchido com a média por monte em laranja itálico ("estimado pendente") e, se aceito sem edição, não é enviado — o servidor grava o estimado (RF-P01)
+- [x] 2026-09-19 — **Refatoração dos gargalos de Alta Gravidade (contagem + ações de montes)**: backend — `reservarMontes`/`cancelarReserva`/`moverSetorMontes`/`aplicarBaixaVenda` sem loops de escrita (3 queries × monte → **3 queries fixas**: `updateMany` + `createMany` de movimentações e auditoria; splits PARCIAIS via `calcularFracaoMonte` **pura** + `escreverFracoes` com updates agrupados por payload idêntico), todas com `timeout: 15_000` (família do P2028 fechada); dead code `registrarMovimento` removido; frontend contagem — **UI otimista** nas 4 ações (`adicionar` com id temporário trocado na resposta, `excluir`/`editar` com revert a snapshot, `revisar` patchado pela própria resposta) + `revalidarEmFundo()` com `startTransition`; sem recarga bloqueante (`await carregarContagem` eliminada das ações); requisitos e respostas das APIs inalterados Stashed changes
 - [ ] Próximo passo pendente: **Sprint 14 — PWA Offline-First** (Serwist + Dexie + fila idempotente)
