@@ -1314,3 +1314,30 @@ ADMIN_EMAIL=admin@fabrica.local   # usado apenas no seed inicial
 - [ ] Seed fake com cenários e datas variadas para demonstração.
 - [ ] `PROJECT_MAP.md` com Log de Execução atualizado; `docs/` em MKDocs com Mermaid.
 - [ ] Sem testes automatizados (requisito explícito); código simples, legível, ESLint/Prettier limpos.
+
+## 39. Diretrizes de Desenvolvimento
+
+### ⚠️ REGRAS ESTRITAS DE PERFORMANCE E ARQUITETURA (LEITURA OBRIGATÓRIA)
+
+Para manter a integridade da stack (Next.js + Prisma) e aplicar os princípios KISS e DRY de forma estrita, toda nova implementação ou alteração de código deve obrigatoriamente respeitar as seguintes restrições:
+
+**1. BANCO DE DADOS (PRISMA) - PROIBIDO N+1 E LOOPS DE ESCRITA:**
+- É expressamente proibido executar consultas (`findUnique`, `findFirst`, `findMany`) ou mutações (`create`, `update`, `delete`) dentro de loops (`.map`, `for`, `forEach`).
+- Para leituras de dados aninhados ou relacionados, construa uma única consulta global utilizando as cláusulas `include` ou `select`.
+- Para escritas múltiplas, utilize exclusivamente operações em lote (`createMany`, `updateMany`).
+- Se a operação envolver múltiplas etapas interligadas (ex: baixar lote, criar movimentação e gravar auditoria), agrupe tudo obrigatoriamente dentro de um `prisma.$transaction` e defina um `timeout` de segurança (ex: 15000ms) para evitar o erro `P2028`.
+
+**2. FRONTEND (NEXT.JS) - PROIBIDO CONGELAMENTO DE INTERFACE (UI BLOQUEANTE):**
+- Nunca utilize recargas completas e síncronas de dados (ex: `await carregarTudo()`) para atualizar a tela após uma mutação no banco de dados.
+- Toda ação de usuário que altera, move ou exclui dados deve aplicar Atualização Otimista (Optimistic UI) no estado local imediatamente, fornecendo feedback instantâneo.
+- Requisições ao backend, revalidações de cache (`router.refresh()`) e sincronizações devem ocorrer em segundo plano, encapsuladas dentro do hook `startTransition` do React. A interface (UI thread) nunca deve ser bloqueada aguardando o banco de dados.
+
+**3. VALIDAÇÃO DE LÓGICA E EFICIÊNCIA:**
+- Antes de sugerir a codificação de fluxos complexos, projete a lógica para garantir que o banco de dados será acionado o mínimo de vezes possível.
+- Evite blocos de captura de erro vazios. Toda falha em operações de banco de dados deve ser tratada e gerar um alerta visual no frontend.
+
+**4. MANUTENÇÃO CONTÍNUA DA DOCUMENTAÇÃO:**
+- Ao finalizar qualquer tarefa que resulte em alterações no código, é obrigatório atualizar imediatamente o arquivo `PROJECT_MAP.md`.
+- O mapa deve refletir o estado exato do sistema, documentando novos fluxos de lógica de negócio, novas ferramentas ou mudanças na arquitetura.
+- Atualize rigorosamente o "Log de Execução" no mapa, registrando o último passo concluído e definindo o próximo passo pendente.
+- Se a alteração modificar o escopo inicial, a estrutura de dados ou os requisitos de infraestrutura, atualize também o `PRD.md` para manter a paridade absoluta com o código-fonte.

@@ -360,110 +360,140 @@ type TipoMonteEditado = {
   status: StatusMonte;
 };
 
-async function registrarMovimento(
-  tx: Tx,
-  monte: TipoMonteEditado,
-  dados: {
-    tipo: 'MOVIMENTO_SETOR' | 'BAIXA_VENDA' | 'RESERVA' | 'CANCELAMENTO_RESERVA' | 'EDICAO';
-    status_anterior: StatusMonte;
-    status_novo: StatusMonte;
-    qtd_barras?: number | null;
-    peso?: Prisma.Decimal | null;
-    setor_id?: number | null;
-    destino?: string | null;
-    para_quem?: string | null;
-    observacao?: string | null;
-    dataISO: string;
-    usuario_id: number;
-  },
-) {
-  await tx.movimentacao_chumbo.create({
-    data: {
-      monte_id: monte.id,
-      lote_id: monte.lote_id,
-      tipo: dados.tipo,
-      status_anterior: dados.status_anterior,
-      status_novo: dados.status_novo,
-      qtd_barras: dados.qtd_barras ?? monte.qtd_barras,
-      peso: dados.peso ?? null,
-      setor_id: dados.setor_id ?? null,
-      destino: dados.destino ?? null,
-      para_quem: dados.para_quem ?? null,
-      observacao: dados.observacao ?? null,
-      data: dataISOparaDate(dados.dataISO),
-      usuario_id: dados.usuario_id,
-    },
-  });
-}
-
 export async function reservarMontes(dados: ReservaInput, sessao: Sessao) {
   const setor = await prisma.setor.findFirst({ where: { id: dados.setor_id, ativo: true } });
   if (!setor) throw new RegraError('Setor invalido ou inativo.', 400);
 
-  return prisma.$transaction(async (tx) => {
-    const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'PARCIAL'], 'Reservar');
-    const resultado: { id: number; status: StatusMonte }[] = [];
-    for (const m of montes) {
-      const atualizado = await tx.monte_chumbo.update({
-        where: { id: m.id },
+  const hoje = hojeFabrica();
+  return prisma.$transaction(
+    async (tx) => {
+      const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'PARCIAL'], 'Reservar');
+
+      /* batch: todos os montes ganham o mesmo estado — 1 updateMany +
+         2 createMany (antes: 3 queries sequenciais por monte). */
+      await tx.monte_chumbo.updateMany({
+        where: { id: { in: montes.map((m) => m.id) } },
         data: { status: 'RESERVADO', setor_reserva_id: dados.setor_id },
       });
-      await registrarMovimento(tx, m, {
-        tipo: 'RESERVA',
-        status_anterior: m.status,
-        status_novo: 'RESERVADO',
-        setor_id: dados.setor_id,
-        observacao: dados.observacao ?? null,
-        dataISO: hojeFabrica(),
-        usuario_id: sessao.usuario_id,
+
+      await tx.movimentacao_chumbo.createMany({
+        data: montes.map((m) => ({
+          monte_id: m.id,
+          lote_id: m.lote_id,
+          tipo: 'RESERVA' as const,
+          status_anterior: m.status,
+          status_novo: 'RESERVADO' as const,
+          qtd_barras: m.qtd_barras,
+          setor_id: dados.setor_id,
+          observacao: dados.observacao ?? null,
+          data: dataISOparaDate(hoje),
+          usuario_id: sessao.usuario_id,
+        })),
       });
-      await registrarAuditoria({
-        entidade: 'monte_chumbo',
-        entidade_id: m.id,
-        acao: 'ATUALIZACAO',
-        dados_anteriores: { status: m.status, setor_reserva_id: m.setor_reserva_id },
-        dados_novos: { status: 'RESERVADO', setor_reserva_id: dados.setor_id },
-        usuario_id: sessao.usuario_id,
-        cliente: tx,
+
+      await tx.log_auditoria.createMany({
+        data: montes.map((m) => ({
+          entidade: 'monte_chumbo',
+          entidade_id: m.id,
+          acao: 'ATUALIZACAO' as const,
+          dados_anteriores: { status: m.status, setor_reserva_id: m.setor_reserva_id },
+          dados_novos: { status: 'RESERVADO', setor_reserva_id: dados.setor_id },
+          usuario_id: sessao.usuario_id,
+        })),
       });
-      resultado.push({ id: m.id, status: atualizado.status });
-    }
-    return { acao: 'RESERVA', montes: resultado };
-  });
+
+      return { acao: 'RESERVA', montes: montes.map((m) => ({ id: m.id, status: 'RESERVADO' as StatusMonte })) };
+    },
+    { timeout: 15_000, maxWait: 10_000 },
+  );
 }
 
 export async function cancelarReserva(dados: { monte_ids: number[]; observacao?: string }, sessao: Sessao) {
-  return prisma.$transaction(async (tx) => {
-    const montes = await validarMontes(tx, dados.monte_ids, ['RESERVADO'], 'Cancelar reserva');
-    for (const m of montes) {
-      await tx.monte_chumbo.update({
-        where: { id: m.id },
+  const hoje = hojeFabrica();
+  return prisma.$transaction(
+    async (tx) => {
+      const montes = await validarMontes(tx, dados.monte_ids, ['RESERVADO'], 'Cancelar reserva');
+
+      await tx.monte_chumbo.updateMany({
+        where: { id: { in: montes.map((m) => m.id) } },
         data: { status: 'EM_ESTOQUE', setor_reserva_id: null },
       });
-      await registrarMovimento(tx, m, {
-        tipo: 'CANCELAMENTO_RESERVA',
-        status_anterior: m.status,
-        status_novo: 'EM_ESTOQUE',
-        observacao: dados.observacao ?? 'Reserva cancelada',
-        dataISO: hojeFabrica(),
-        usuario_id: sessao.usuario_id,
+
+      await tx.movimentacao_chumbo.createMany({
+        data: montes.map((m) => ({
+          monte_id: m.id,
+          lote_id: m.lote_id,
+          tipo: 'CANCELAMENTO_RESERVA' as const,
+          status_anterior: m.status,
+          status_novo: 'EM_ESTOQUE' as const,
+          qtd_barras: m.qtd_barras,
+          observacao: dados.observacao ?? 'Reserva cancelada',
+          data: dataISOparaDate(hoje),
+          usuario_id: sessao.usuario_id,
+        })),
       });
-      await registrarAuditoria({
-        entidade: 'monte_chumbo',
-        entidade_id: m.id,
-        acao: 'ATUALIZACAO',
-        dados_anteriores: { status: m.status, setor_reserva_id: m.setor_reserva_id },
-        dados_novos: { status: 'EM_ESTOQUE', setor_reserva_id: null },
-        usuario_id: sessao.usuario_id,
-        cliente: tx,
+
+      await tx.log_auditoria.createMany({
+        data: montes.map((m) => ({
+          entidade: 'monte_chumbo',
+          entidade_id: m.id,
+          acao: 'ATUALIZACAO' as const,
+          dados_anteriores: { status: m.status, setor_reserva_id: m.setor_reserva_id },
+          dados_novos: { status: 'EM_ESTOQUE', setor_reserva_id: null },
+          usuario_id: sessao.usuario_id,
+        })),
       });
-    }
-    return { acao: 'CANCELAMENTO_RESERVA' };
-  });
+
+      return { acao: 'CANCELAMENTO_RESERVA' };
+    },
+    { timeout: 15_000, maxWait: 10_000 },
+  );
 }
 
-async function exercerFracaoMonte(
-  tx: Tx,
+/* Dados de atualização do monte no exercício de fração (payload do updateMany) */
+type DadosUpdateFracao = {
+  qtd_barras?: number;
+  status: StatusMonte;
+  setor_reserva_id?: number | null;
+  peso_real?: Prisma.Decimal;
+  peso_estimado?: Prisma.Decimal | null;
+};
+
+type FracaoCalculada = {
+  monteId: number;
+  loteId: number;
+  dadosUpdate: DadosUpdateFracao;
+  movimentacao: {
+    monte_id: number;
+    lote_id: number;
+    tipo: 'MOVIMENTO_SETOR' | 'BAIXA_VENDA';
+    status_anterior: StatusMonte;
+    status_novo: StatusMonte;
+    qtd_barras: number;
+    peso: Prisma.Decimal | null;
+    setor_id: number | null;
+    destino: string | null;
+    para_quem: string | null;
+    observacao: string | null;
+    data: Date;
+    usuario_id: number;
+  };
+  auditoria: {
+    entidade: string;
+    entidade_id: number;
+    acao: 'ATUALIZACAO';
+    dados_anteriores: { status: StatusMonte; qtd_barras: number };
+    dados_novos: { status: StatusMonte; qtd_barras: number };
+    usuario_id: number;
+  };
+  barrasMovidas: number;
+  pesoMovido: Prisma.Decimal | null;
+  novoStatus: StatusMonte;
+};
+
+/* Exercício de fração PURO — mesma matemática do exercerFracaoMonte original,
+   mas sem tocar no banco: alimenta os batches (updateMany + createMany). */
+function calcularFracaoMonte(
   monte: TipoMonteEditado,
   barrasMovidas: number,
   pesoInformado: Prisma.Decimal | null,
@@ -471,7 +501,7 @@ async function exercerFracaoMonte(
   sessao: Sessao,
   tipo: 'MOVIMENTO_SETOR' | 'BAIXA_VENDA',
   extras: { destino?: string; para_quem?: string; observacao?: string; dataISO: string },
-) {
+): FracaoCalculada {
   const total = monte.qtd_barras;
   const parcial = barrasMovidas < total;
   const pesoBase = pesoExibidoDe(monte);
@@ -487,13 +517,11 @@ async function exercerFracaoMonte(
 
   const novoStatus: StatusMonte = parcial ? 'PARCIAL' : (tipo === 'BAIXA_VENDA' ? 'VENDIDO' : 'NO_SETOR');
 
+  const dadosUpdate: DadosUpdateFracao = parcial
+    ? { qtd_barras: total - barrasMovidas, status: novoStatus }
+    : { status: novoStatus };
+
   if (parcial) {
-    const dadosUpdate: {
-      qtd_barras: number;
-      status: StatusMonte;
-      peso_real?: Prisma.Decimal;
-      peso_estimado?: Prisma.Decimal;
-    } = { qtd_barras: total - barrasMovidas, status: novoStatus };
     if (pesoBase != null && pesoMovido != null) {
       const resto = pesoBase.minus(pesoMovido);
       if (resto.gte(0)) {
@@ -501,22 +529,20 @@ async function exercerFracaoMonte(
         else dadosUpdate.peso_estimado = resto;
       }
     }
-    await tx.monte_chumbo.update({ where: { id: monte.id }, data: dadosUpdate });
   } else {
-    const dadosUpdate: { status: StatusMonte; setor_reserva_id?: number | null; peso_real?: Prisma.Decimal; peso_estimado?: Prisma.Decimal | null } = {
-      status: novoStatus,
-    };
     if (tipo === 'MOVIMENTO_SETOR') dadosUpdate.setor_reserva_id = setorId;
     if (pesoInformado != null) {
       dadosUpdate.peso_real = pesoInformado;
       dadosUpdate.peso_estimado = null;
     }
     if (tipo === 'BAIXA_VENDA') dadosUpdate.setor_reserva_id = null;
-    await tx.monte_chumbo.update({ where: { id: monte.id }, data: dadosUpdate });
   }
 
-  await tx.movimentacao_chumbo.create({
-    data: {
+  return {
+    monteId: monte.id,
+    loteId: monte.lote_id,
+    dadosUpdate,
+    movimentacao: {
       monte_id: monte.id,
       lote_id: monte.lote_id,
       tipo,
@@ -531,91 +557,125 @@ async function exercerFracaoMonte(
       data: dataISOparaDate(extras.dataISO),
       usuario_id: sessao.usuario_id,
     },
-  });
+    auditoria: {
+      entidade: 'monte_chumbo',
+      entidade_id: monte.id,
+      acao: 'ATUALIZACAO',
+      dados_anteriores: { status: monte.status, qtd_barras: total },
+      dados_novos: { status: novoStatus, qtd_barras: parcial ? total - barrasMovidas : total },
+      usuario_id: sessao.usuario_id,
+    },
+    barrasMovidas,
+    pesoMovido,
+    novoStatus,
+  };
+}
 
-  await registrarAuditoria({
-    entidade: 'monte_chumbo',
-    entidade_id: monte.id,
-    acao: 'ATUALIZACAO',
-    dados_anteriores: { status: monte.status, qtd_barras: total },
-    dados_novos: { status: novoStatus, qtd_barras: parcial ? total - barrasMovidas : total },
-    usuario_id: sessao.usuario_id,
-    cliente: tx,
-  });
-
-  return { barrasMovidas, pesoMovido, novoStatus };
+/* Escreve os cálculos de fração em batch: updates agrupados por payload
+   idêntico (1 updateMany por grupo) + createMany de movimentações e auditoria. */
+async function escreverFracoes(tx: Tx, calculos: FracaoCalculada[]) {
+  const grupos = new Map<string, { ids: number[]; data: DadosUpdateFracao }>();
+  for (const c of calculos) {
+    const chave = JSON.stringify(c.dadosUpdate);
+    const g = grupos.get(chave);
+    if (g) g.ids.push(c.monteId);
+    else grupos.set(chave, { ids: [c.monteId], data: c.dadosUpdate });
+  }
+  for (const g of grupos.values()) {
+    await tx.monte_chumbo.updateMany({ where: { id: { in: g.ids } }, data: g.data });
+  }
+  await tx.movimentacao_chumbo.createMany({ data: calculos.map((c) => c.movimentacao) });
+  await tx.log_auditoria.createMany({ data: calculos.map((c) => c.auditoria) });
 }
 
 export async function moverSetorMontes(dados: MoverSetorInput, sessao: Sessao) {
   const setor = await prisma.setor.findFirst({ where: { id: dados.setor_id, ativo: true } });
   if (!setor) throw new RegraError('Setor invalido ou inativo.', 400);
 
-  return prisma.$transaction(async (tx) => {
-    const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Mover ao setor');
+  return prisma.$transaction(
+    async (tx) => {
+      const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Mover ao setor');
 
-    /* RF-M03/M05: peso/barras só fazem sentido para um monte por vez — com vários
-       montes selecionados a ação é sempre integral (peso pela média de cada monte). */
-    if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
-      throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou mova os montes inteiros.', 400);
-    }
+      /* RF-M03/M05: peso/barras só fazem sentido para um monte por vez — com vários
+         montes selecionados a ação é sempre integral (peso pela média de cada monte). */
+      if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
+        throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou mova os montes inteiros.', 400);
+      }
 
-    const resultado: { monte_id: number; barras_movidas: number; peso: number | null; status: StatusMonte }[] = [];
-    const lotesAfetados = new Set<number>();
-    let houvePesagemReal = false;
-
-    for (const m of montes) {
-      const movidas = Math.min(m.qtd_barras, dados.qtd_barras ?? m.qtd_barras);
       const pesoInformado = dados.peso_informado != null ? new D(dados.peso_informado) : null;
-      const r = await exercerFracaoMonte(tx, m, movidas, pesoInformado, dados.setor_id, sessao, 'MOVIMENTO_SETOR', {
-        observacao: dados.observacao,
-        dataISO: hojeFabrica(),
-      });
-      if (pesoInformado != null && movidas === m.qtd_barras) houvePesagemReal = true;
-      lotesAfetados.add(m.lote_id);
-      resultado.push({ monte_id: m.id, barras_movidas: movidas, peso: num(r.pesoMovido), status: r.novoStatus });
-    }
+      const hoje = hojeFabrica();
 
-    if (houvePesagemReal) {
-      for (const loteId of lotesAfetados) await reconciliarLote(tx, loteId);
-    }
+      /* cálculo puro em memória + escrita em batch (updateMany por payload
+         idêntico + createMany de movimentações/auditoria) */
+      const calculos = montes.map((m) =>
+        calcularFracaoMonte(
+          m,
+          Math.min(m.qtd_barras, dados.qtd_barras ?? m.qtd_barras),
+          pesoInformado,
+          dados.setor_id,
+          sessao,
+          'MOVIMENTO_SETOR',
+          { observacao: dados.observacao, dataISO: hoje },
+        ),
+      );
 
-    return { acao: 'MOVIMENTO_SETOR', movimentacoes: resultado };
-  });
+      await escreverFracoes(tx, calculos);
+
+      /* RF-P02/P03: pesagem real em movimento INTEGRAL dispara a reconciliação
+         (mesma semântica do código anterior: parcial com peso não reconcilia) */
+      if (pesoInformado != null && calculos.some((c, i) => c.barrasMovidas === montes[i].qtd_barras)) {
+        const lotesAfetados = new Set(calculos.filter((c, i) => c.barrasMovidas === montes[i].qtd_barras).map((c) => c.loteId));
+        for (const loteId of lotesAfetados) await reconciliarLote(tx, loteId);
+      }
+
+      return {
+        acao: 'MOVIMENTO_SETOR',
+        movimentacoes: calculos.map((c) => ({ monte_id: c.monteId, barras_movidas: c.barrasMovidas, peso: num(c.pesoMovido), status: c.novoStatus })),
+      };
+    },
+    { timeout: 15_000, maxWait: 10_000 },
+  );
 }
 
 export async function aplicarBaixaVenda(dados: BaixaVendaInput, sessao: Sessao) {
-  return prisma.$transaction(async (tx) => {
-    const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Baixa/Venda');
+  return prisma.$transaction(
+    async (tx) => {
+      const montes = await validarMontes(tx, dados.monte_ids, ['EM_ESTOQUE', 'RESERVADO', 'PARCIAL'], 'Baixa/Venda');
 
-    /* RF-M05: mesma regra do movimento — peso/barras apenas com um monte selecionado. */
-    if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
-      throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou dê baixa nos montes inteiros.', 400);
-    }
+      /* RF-M05: mesma regra do movimento — peso/barras apenas com um monte selecionado. */
+      if (montes.length > 1 && (dados.qtd_barras != null || dados.peso_informado != null)) {
+        throw new RegraError('Peso e quantidade de barras só podem ser informados para um monte por vez. Selecione apenas um monte ou dê baixa nos montes inteiros.', 400);
+      }
 
-    const resultado: { monte_id: number; barras_movidas: number; peso: number | null; status: StatusMonte }[] = [];
-    const lotesAfetados = new Set<number>();
-    let houvePesagemReal = false;
-
-    for (const m of montes) {
-      const movidas = Math.min(m.qtd_barras, dados.qtd_barras ?? m.qtd_barras);
       const pesoInformado = dados.peso_informado != null ? new D(dados.peso_informado) : null;
-      const r = await exercerFracaoMonte(tx, m, movidas, pesoInformado, null, sessao, 'BAIXA_VENDA', {
-        destino: dados.destino,
-        para_quem: dados.para_quem,
-        observacao: dados.observacao,
-        dataISO: dados.data,
-      });
-      if (pesoInformado != null) houvePesagemReal = true;
-      lotesAfetados.add(m.lote_id);
-      resultado.push({ monte_id: m.id, barras_movidas: movidas, peso: num(r.pesoMovido), status: r.novoStatus });
-    }
 
-    if (houvePesagemReal) {
-      for (const loteId of lotesAfetados) await reconciliarLote(tx, loteId);
-    }
+      const calculos = montes.map((m) =>
+        calcularFracaoMonte(
+          m,
+          Math.min(m.qtd_barras, dados.qtd_barras ?? m.qtd_barras),
+          pesoInformado,
+          null,
+          sessao,
+          'BAIXA_VENDA',
+          { destino: dados.destino, para_quem: dados.para_quem, observacao: dados.observacao, dataISO: dados.data },
+        ),
+      );
 
-    return { acao: 'BAIXA_VENDA', movimentacoes: resultado };
-  });
+      await escreverFracoes(tx, calculos);
+
+      /* RF-P02/P03/P05: pesagem real dispara reconciliação + ajuste residual */
+      if (pesoInformado != null) {
+        const lotesAfetados = new Set(calculos.map((c) => c.loteId));
+        for (const loteId of lotesAfetados) await reconciliarLote(tx, loteId);
+      }
+
+      return {
+        acao: 'BAIXA_VENDA',
+        movimentacoes: calculos.map((c) => ({ monte_id: c.monteId, barras_movidas: c.barrasMovidas, peso: num(c.pesoMovido), status: c.novoStatus })),
+      };
+    },
+    { timeout: 15_000, maxWait: 10_000 },
+  );
 }
 
 // ---------- Reconciliação (RF-P02..P07) ----------
