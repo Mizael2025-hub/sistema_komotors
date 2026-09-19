@@ -25,6 +25,7 @@ export default function PaginaEntradaChumbo() {
   const [celula, setCelula] = useState<{ l: number; c: number } | null>(null);
   const [qtd, setQtd] = useState('');
   const [peso, setPeso] = useState('');
+  const [pesoAuto, setPesoAuto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<ToastAviso>(null);
   const [enviando, setEnviando] = useState(false);
@@ -45,18 +46,37 @@ export default function PaginaEntradaChumbo() {
     return { montes: lista.length, barras, peso: pesoInformado ?? (somaPesos > 0 ? somaPesos : null) };
   }, [montes, pesoTotal]);
 
+  /* média por monte (peso_total / nº de montes, contando o atual) — sugestão
+     exibida no campo quando o peso total do lote foi informado (RF-P01) */
+  const mediaMonte = () => {
+    const total = Number(pesoTotal);
+    if (!pesoTotal || !total || total <= 0) return null;
+    const nova = celula != null && montes[chave(celula.l, celula.c)] == null;
+    const montesPrevistos = Object.keys(montes).length + (nova ? 1 : 0);
+    return Math.round((total / Math.max(1, montesPrevistos)) * 100) / 100;
+  };
+
   function abrirCelula(l: number, c: number) {
     const k = chave(l, c);
     setCelula({ l, c });
     const atual = montes[k];
     setQtd(atual ? String(atual.qtd_barras) : '');
-    setPeso(atual && atual.peso != null ? String(atual.peso) : '');
+    if (atual && atual.peso != null) {
+      setPeso(String(atual.peso));
+      setPesoAuto(false);
+    } else {
+      const sugestao = mediaMonte();
+      setPeso(sugestao ? String(sugestao) : '');
+      // peso só é opcional quando o peso total do lote foi informado
+      setPesoAuto(pesoTotal !== '' && sugestao != null);
+    }
   }
 
   function fecharCelula() {
     setCelula(null);
     setQtd('');
     setPeso('');
+    setPesoAuto(false);
   }
 
   function confirmarCelula() {
@@ -66,8 +86,18 @@ export default function PaginaEntradaChumbo() {
       setAviso({ tipo: 'warn', mensagem: 'Informe as barras' });
       return;
     }
+    /* sem peso total no card anterior, o peso por monte é obrigatório */
+    if (pesoTotal === '' && peso === '') {
+      setAviso({ tipo: 'warn', mensagem: 'Informe o peso do monte' });
+      return;
+    }
     const k = chave(celula.l, celula.c);
-    setMontes((prev) => ({ ...prev, [k]: { qtd_barras: n, peso: peso === '' ? undefined : Number(peso) } }));
+    /* pesoAuto: não envia o valor sugerido — o backend registra como peso
+       ESTIMADO (peso_total ÷ barras), e o real entra após a pesagem */
+    setMontes((prev) => ({
+      ...prev,
+      [k]: { qtd_barras: n, peso: pesoAuto || peso === '' ? undefined : Number(peso) },
+    }));
     fecharCelula();
   }
 
@@ -259,9 +289,22 @@ export default function PaginaEntradaChumbo() {
           <div className="ios-group">
             <label className="ios-field">
               <span>Peso (kg)</span>
-              <input type="number" min={0} step="0.01" inputMode="decimal" value={peso}
-                onChange={(e) => setPeso(e.target.value)} placeholder="Opcional" />
+              <input
+                type="number" min={0} step="0.01" inputMode="decimal" value={peso}
+                onChange={(e) => { setPeso(e.target.value); setPesoAuto(false); }}
+                className={pesoAuto ? 'italic font-semibold text-[var(--laranja)]' : ''}
+                placeholder={pesoTotal !== '' ? 'Média automática (estimado)' : 'Obrigatório — ex.: 240'}
+              />
             </label>
+            {pesoAuto ? (
+              <p className="mb-2 px-4 text-[12px] font-medium italic text-[var(--laranja)]">
+                Estimado pela média do lote — pendente de pesagem real
+              </p>
+            ) : (
+              <p className="mb-2 px-4 text-[11.5px] text-[var(--muted-foreground)]">
+                {pesoTotal !== '' ? 'Opcional quando o peso total foi informado' : 'Obrigatório — sem peso total no lote'}
+              </p>
+            )}
             <label className="ios-field">
               <span>Qtd. barras</span>
               <input type="number" min={1} inputMode="numeric" value={qtd}

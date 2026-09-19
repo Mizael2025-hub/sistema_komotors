@@ -112,8 +112,12 @@ export default function PaginaContagemChumbo() {
     setValor((atual) => (atual.length >= 6 ? atual : atual + v));
   }
 
-  function apagar() {
+  function apagarUltimo() {
     setValor((atual) => atual.slice(0, -1));
+  }
+
+  function limparTudo() {
+    setValor('');
   }
 
   async function adicionar() {
@@ -272,17 +276,19 @@ export default function PaginaContagemChumbo() {
           <div className="ios-field">
             <span>Liga</span>
             <div className="flex flex-1 justify-end gap-2">
-              {(ligasItens ?? []).map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setLigaForm((atual) => (atual === l.id ? '' : l.id))}
-                  aria-pressed={ligaForm === l.id}
-                  aria-label={l.nome}
-                  className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
-                  style={{ backgroundColor: corLigaHex(l.cor) }}
-                />
-              ))}
+            {(ligasItens ?? []).map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setLigaForm((atual) => (atual === l.id ? '' : l.id))}
+                aria-pressed={ligaForm === l.id}
+                aria-label={l.nome}
+                className={`dot-liga ${ligaForm === l.id ? 'on' : ''}`}
+                style={{ backgroundColor: corLigaHex(l.cor), color: l.cor === 'AMARELO' ? '#1c1c1e' : '#fff' }}
+              >
+                {l.nome.match(/\d+/)?.[0] ?? l.id}
+              </button>
+            ))}
               {(ligasItens ?? []).length === 0 && (
                 <span className="text-[13px] text-[var(--muted-foreground)]">Sem ligas cadastradas</span>
               )}
@@ -312,8 +318,9 @@ export default function PaginaContagemChumbo() {
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => (
               <button key={n} type="button" onClick={() => pressionar(n)}>{n}</button>
             ))}
-            <button type="button" className="wide" onClick={apagar}>Apagar</button>
+            <button type="button" className="limpar" onClick={limparTudo} aria-label="Limpar tudo">C</button>
             <button type="button" onClick={() => pressionar('0')}>0</button>
+            <button type="button" className="backspace" onClick={apagarUltimo} aria-label="Apagar último dígito">⌫</button>
           </div>
           <div className="px-4 pb-3.5">
             <button onClick={adicionar} disabled={enviando} className="ios-btn ios-btn-primario disabled:opacity-40">
