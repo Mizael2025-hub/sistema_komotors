@@ -213,11 +213,11 @@ Menu com todos os cadastros de base do sistema. Todos com criar/editar/ativar/de
 > Este subsistema é **CRÍTICO**. Toda aritmética usa `Decimal` no servidor (nunca float).
 
 - **RF-P01** **Peso estimado na entrada** — quando o monte não é pesado individualmente na entrada e o lote tem `peso_total_informado`:
-  `peso_estimado = (peso_total_informado / barras_totais_do_lote) × barras_do_monte`, exibido com marcação visual de **"estimado"**. Na entrada, o campo de peso do monte já vem **sugerido pela média por monte** (destacado em laranja itálico); se aceito sem edição, o valor sugerido **não é enviado** — o servidor grava o estimado pela fórmula acima (o real entra após a pesagem, RF-P02). *(comportamento atualizado em 2026-09-19)*
-- **RF-P02** **Peso real se torna autoritativo** — na primeira movimentação em que o monte é pesado de fato (mover/venda com peso informado), o peso real gravado se torna autoritativo para aquele monte.
+  `peso_estimado = round(peso_total_informado × (barras_do_monte / barras_totais))`, com o **último monte estimado recebendo `peso_total − Σ anteriores`** (compensação) — apenas **números inteiros** e soma final exata contra o peso total. Na entrada, o campo de peso do monte já vem **sugerido pela média por monte** (destacado em laranja itálico); se aceito sem edição, o valor sugerido **não é enviado** — o servidor grava o estimado pela fórmula acima (o real entra após a pesagem, RF-P02). *(inteiros com compensação em 2026-09-19)*
+- **RF-P02** **Peso real se torna autoritativo** — na primeira movimentação em que o monte é pesado de fato (mover/venda com peso informado, **ou edição do peso no estoque**), o peso real gravado se torna autoritativo para aquele monte. *(edição como gatilho adicionada em 2026-09-19)*
 - **RF-P03** **Reconciliação do lote** — ao registrar o primeiro peso real de um monte do lote, o sistema **recalcula o peso estimado dos montes ainda não pesados** do mesmo lote:
-  `peso_estimado_monte = ((peso_informado − Σ pesos_reais_já_registrados) / barras_restantes_não_pesadas) × barras_do_monte`,
-  absorvendo a diferença de balança nos montes restantes. O recálculo é registrado na timeline do lote.
+  `peso_estimado_monte = round(peso_restante × (barras_do_monte / barras_restantes))`, com o **último monte recebendo `peso_restante − Σ anteriores`** (compensação) — apenas **números inteiros** e soma exata; `peso_restante = peso_informado − Σ pesos_reais`,
+  absorvendo a diferença de balança nos montes restantes. O recálculo é registrado na timeline do lote. *(inteiros com compensação em 2026-09-19)*
 - **RF-P04** **Peso médio por barra em movimentações parciais** — ao operar movimentações por quantidade de barras, o peso é automático pela média do monte (`peso / barras`), **com opção de edição manual**. Ao editar manualmente o peso de uma fração movida, **as barras/peso restantes do monte se auto-ajustam** recalculando a média.
 - **RF-P05** **Ajuste residual** — quando **todos** os montes do lote são pesados, qualquer diferença residual (`peso_total_informado − Σ pesos_reais`) vira um **ajuste de arredondamento** registrado no histórico do lote (auditável), sem alterar os pesos reais.
 - **RF-P06** **Fechamento do resumo do lote** — o resumo do lote **sempre fecha com o peso informado** enquanto houver montes estimados; ao final, bate com a soma dos pesos reais + ajuste residual.
@@ -543,7 +543,7 @@ erDiagram
 
 ### 20.6 Reconciliação de peso (automática)
 
-1. Primeira pesagem real de um monte do lote (via movimentação) → peso real autoritativo.
+1. Primeira pesagem real de um monte do lote (via movimentação **ou edição do peso no estoque**) → peso real autoritativo.
 2. Sistema recalcula `peso_estimado` dos montes ainda não pesados do lote: `(peso_informado − Σ pesos_reais) / barras_restantes × barras_do_monte`.
 3. Recálculo registrado na timeline do lote (movimentação RECONCILIACAO, sem usuário — sistema).
 4. Quando todos os montes forem pesados: diferença residual vira **ajuste de arredondamento** auditável (RF-P05); o resumo do lote fecha com Σ pesos reais + ajuste.

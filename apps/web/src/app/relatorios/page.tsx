@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { consumir } from '@/lib/api/cliente';
 import { SinoNotificacoes } from '@/components/sino';
 import { ToggleTema, TabBar } from '@/components/ui';
@@ -96,21 +95,18 @@ export default function PaginaRelatoriosChumbo() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-[var(--border)] bg-background/85 px-5 py-3 backdrop-blur">
+      <header className="ios-topbar">
         <div>
-          <h1 className="text-[15px] font-bold tracking-tight">Relatórios</h1>
-          <p className="text-[12px] text-[var(--muted-foreground)]">Chumbo · XLSX e PDF</p>
+          <h1>Relatórios</h1>
+          <div className="sub">Chumbo · XLSX e PDF</div>
         </div>
         <div className="flex items-center gap-2">
           <SinoNotificacoes />
           <ToggleTema />
-          <Link href="/menu" className="rounded-full bg-[var(--muted)] px-3 py-1.5 text-[13px] font-semibold text-[var(--tint)]">
-            Menu
-          </Link>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-md px-4 pb-28 pt-4">
+      <main className="mx-auto w-full max-w-[480px] px-4 pb-32 pt-4">
         {erro && <p role="alert" className="mb-3 rounded-xl bg-[var(--destructive)]/10 px-3 py-2 text-[13px] font-medium text-[var(--destructive)]">{erro}</p>}
 
         {/* filtros comuns (RF-R01) */}

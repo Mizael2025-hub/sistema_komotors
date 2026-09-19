@@ -77,7 +77,28 @@ export async function criarEntrada(dados: EntradaLoteInput, sessao: Sessao) {
         if (!liga) throw new RegraError('Liga de chumbo invalida ou inativa.', 400);
 
         const barrasTotais = dados.montes.reduce((s, m) => s + m.qtd_barras, 0);
-        const pesoPorBarra = dados.peso_total_informado != null ? new D(dados.peso_total_informado).div(barrasTotais) : null;
+
+        /* RF-P01 (opção A, inteiros): distribuição proporcional por barra com
+           COMPENSAÇÃO — N-1 montes por Math.round da proporção, o último
+           estimado recebe (peso_total − soma acumulada) e a matemática fecha
+           exata, sem casas decimais e sem divergência na soma final. */
+        const pesoTotalNum = dados.peso_total_informado != null ? Number(dados.peso_total_informado) : null;
+        const estimadosInteiros = new Map<number, number>();
+        if (pesoTotalNum != null && barrasTotais > 0) {
+          const semPeso = dados.montes
+            .map((m, i) => ({ i, barras: m.qtd_barras }))
+            .filter((x) => dados.montes[x.i].peso == null);
+          let soma = 0;
+          semPeso.forEach((x, k) => {
+            if (k < semPeso.length - 1) {
+              const p = Math.round(pesoTotalNum * (x.barras / barrasTotais));
+              estimadosInteiros.set(x.i, p);
+              soma += p;
+            } else {
+              estimadosInteiros.set(x.i, Math.max(0, pesoTotalNum - soma));
+            }
+          });
+        }
 
         const novoLote = await tx.lote_chumbo.create({
           data: {
@@ -94,7 +115,7 @@ export async function criarEntrada(dados: EntradaLoteInput, sessao: Sessao) {
         });
 
         const montesCriados = await tx.monte_chumbo.createManyAndReturn({
-          data: dados.montes.map((m) => {
+          data: dados.montes.map((m, i) => {
             const pesoReal = m.peso != null ? new D(m.peso) : null;
             return {
               lote_id: novoLote.id,
@@ -103,8 +124,7 @@ export async function criarEntrada(dados: EntradaLoteInput, sessao: Sessao) {
               ordem_liberacao: m.ordem_liberacao ?? (m.linha - 1) * dados.colunas + m.coluna,
               qtd_barras: m.qtd_barras,
               peso_real: pesoReal,
-              peso_estimado:
-                pesoReal == null && pesoPorBarra != null ? pesoPorBarra.mul(m.qtd_barras).toDecimalPlaces(2) : null,
+              peso_estimado: pesoReal == null && estimadosInteiros.has(i) ? new D(estimadosInteiros.get(i)!) : null,
               status: 'EM_ESTOQUE' as const,
             };
           }),
@@ -691,16 +711,28 @@ export async function reconciliarLote(tx: Tx, loteId: number) {
     const barrasRestantes = restantes.reduce((s, m) => s + m.qtd_barras, 0);
     if (barrasRestantes <= 0) return;
 
-    const pesoRestante = new D(lote.peso_total_informado).minus(somaPesados);
-    const mediaBarra = pesoRestante.lte(0) ? new D(0) : pesoRestante.div(barrasRestantes);
+    /* RF-P03 (opção A, inteiros): mesma distribuição com COMPENSAÇÃO —
+       N-1 montes por Math.round da proporção por barra; o último fecha
+       exato com (peso_restante − soma acumulada). Zero se não sobra peso. */
+    const pesoRestanteNum = Math.max(0, Number(new D(lote.peso_total_informado).minus(somaPesados)));
+    const estimados: number[] = [];
+    let soma = 0;
+    restantes.forEach((m, k) => {
+      if (k < restantes.length - 1) {
+        const p = Math.round(pesoRestanteNum * (m.qtd_barras / barrasRestantes));
+        estimados.push(p);
+        soma += p;
+      } else {
+        estimados.push(Math.max(0, pesoRestanteNum - soma));
+      }
+    });
     const detalhes: { monte_id: number; peso_estimado: number }[] = [];
-    for (const m of restantes) {
-      const novoEstimado = mediaBarra.mul(m.qtd_barras).toDecimalPlaces(2);
+    for (let k = 0; k < restantes.length; k++) {
       await tx.monte_chumbo.update({
-        where: { id: m.id },
-        data: { peso_estimado: novoEstimado.lte(0) ? new D(0) : novoEstimado },
+        where: { id: restantes[k].id },
+        data: { peso_estimado: new D(estimados[k]) },
       });
-      detalhes.push({ monte_id: m.id, peso_estimado: num(novoEstimado) ?? 0 });
+      detalhes.push({ monte_id: restantes[k].id, peso_estimado: estimados[k] });
     }
     await tx.movimentacao_chumbo.create({
       data: {
@@ -749,15 +781,21 @@ export async function editarMonte(dados: EdicaoMonteInput, sessao: Sessao) {
     const dadosUpdate: {
       qtd_barras?: number;
       peso_real?: Prisma.Decimal;
-      peso_estimado?: Prisma.Decimal;
+      peso_estimado?: Prisma.Decimal | null;
     } = {};
     if (dados.qtd_barras !== undefined) dadosUpdate.qtd_barras = dados.qtd_barras;
     if (dados.peso !== undefined) {
-      if (monte.peso_real != null) dadosUpdate.peso_real = new D(dados.peso);
-      else dadosUpdate.peso_estimado = new D(dados.peso);
+      /* edição de peso = pesagem real (RF-P02): valor autoritativo, zera o estimado */
+      dadosUpdate.peso_real = new D(dados.peso);
+      dadosUpdate.peso_estimado = null;
     }
 
     const atualizado = await tx.monte_chumbo.update({ where: { id: monte.id }, data: dadosUpdate });
+
+    /* gatilho faltante (diagnóstico Tarefa 2b): pesagem real via edição
+       reajusta os estimados do lote — mesmo recálculo de mover/venda.
+       reconciliarLote é no-op para lotes sem peso_total_informado. */
+    if (dados.peso !== undefined) await reconciliarLote(tx, monte.lote_id);
 
     const pesoAnterior = pesoExibidoDe(monte);
     const pesoNovo = pesoExibidoDe(atualizado);

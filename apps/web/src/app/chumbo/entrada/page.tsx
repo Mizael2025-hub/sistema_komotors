@@ -46,14 +46,46 @@ export default function PaginaEntradaChumbo() {
     return { montes: lista.length, barras, peso: pesoInformado ?? (somaPesos > 0 ? somaPesos : null) };
   }, [montes, pesoTotal]);
 
+  /* peso estimado dinâmico por barra (RF-P01, opção A, INTEIROS): mesma
+     matemática do backend — N-1 montes por Math.round da proporção, o último
+     fecha exato com (peso_total − soma acumulada); recalcula enquanto a
+     grade é preenchida e converge no valor gravado ao salvar */
+  const pesosEstimados = useMemo(() => {
+    const mapa = new Map<string, number>();
+    if (pesoTotal === '') return mapa;
+    const total = Number(pesoTotal);
+    if (!total || total <= 0) return mapa;
+    const entradas = Object.entries(montes);
+    const barrasTotais = entradas.reduce((s, [, m]) => s + m.qtd_barras, 0);
+    if (barrasTotais <= 0) return mapa;
+    const semPeso = entradas.filter(([, m]) => m.peso == null);
+    let soma = 0;
+    semPeso.forEach(([chaveM, m], k) => {
+      if (k < semPeso.length - 1) {
+        const p = Math.round(total * (m.qtd_barras / barrasTotais));
+        mapa.set(chaveM, p);
+        soma += p;
+      } else {
+        mapa.set(chaveM, Math.max(0, total - soma));
+      }
+    });
+    return mapa;
+  }, [pesoTotal, montes]);
+
+  const pesoExibidoCelula = (k: string, m: { qtd_barras: number; peso?: number }) => {
+    if (m.peso != null && m.peso > 0) return { peso: m.peso, estimado: false };
+    const est = pesosEstimados.get(k);
+    return est != null ? { peso: est, estimado: true } : null;
+  };
+
   /* média por monte (peso_total / nº de montes, contando o atual) — sugestão
-     exibida no campo quando o peso total do lote foi informado (RF-P01) */
+     INTEIRA exibida no campo quando o peso total do lote foi informado (RF-P01) */
   const mediaMonte = () => {
     const total = Number(pesoTotal);
     if (!pesoTotal || !total || total <= 0) return null;
     const nova = celula != null && montes[chave(celula.l, celula.c)] == null;
     const montesPrevistos = Object.keys(montes).length + (nova ? 1 : 0);
-    return Math.round((total / Math.max(1, montesPrevistos)) * 100) / 100;
+    return Math.round(total / Math.max(1, montesPrevistos));
   };
 
   function abrirCelula(l: number, c: number) {
@@ -217,14 +249,23 @@ export default function PaginaEntradaChumbo() {
                       : { borderColor: 'var(--border)' }}
                   >
                     {preenchida ? (
-                      <>
-                        {m.peso != null && m.peso > 0 ? (
-                          <span className="whitespace-nowrap text-[15px] font-extrabold tracking-tight">{fmt(m.peso)}<span className="text-[10px] font-bold text-[var(--muted-foreground)]"> kg</span></span>
-                        ) : (
-                          <span className="whitespace-nowrap text-[15px] font-extrabold tracking-tight">{m.qtd_barras}b</span>
-                        )}
-                        <span className="text-[11.5px] font-semibold text-[var(--muted-foreground)]">{m.qtd_barras} barras</span>
-                      </>
+                      (() => {
+                        const exibido = pesoExibidoCelula(k, m);
+                        return (
+                          <>
+                            {exibido ? (
+                              <span className={`whitespace-nowrap text-[15px] font-extrabold tracking-tight ${exibido.estimado ? 'italic text-[var(--laranja)]' : ''}`}>
+                                {fmt(exibido.peso)}<span className="text-[10px] font-bold text-[var(--muted-foreground)]"> kg</span>
+                              </span>
+                            ) : (
+                              <span className="whitespace-nowrap text-[15px] font-extrabold tracking-tight">{m.qtd_barras}b</span>
+                            )}
+                            <span className="text-[11.5px] font-semibold text-[var(--muted-foreground)]">
+                              {m.qtd_barras} barras{exibido?.estimado ? ' · est.' : ''}
+                            </span>
+                          </>
+                        );
+                      })()
                     ) : (
                       <span className="text-[10px] font-semibold text-[var(--muted-foreground)]">{letraLinha(l)}{c}</span>
                     )}
